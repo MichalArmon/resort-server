@@ -1,0 +1,6 @@
+{
+  "TOKEN_GENERATOR": "jwt",
+  "LOGGER": "simple",
+  "VALIDATOR": "joi",
+  "DB_ENVIRONMENT": "local"
+}
