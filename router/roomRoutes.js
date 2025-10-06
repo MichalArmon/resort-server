@@ -3,7 +3,7 @@ import { Router } from "express";
 import {
   getRoomTypes,
   getRoomByType /*, getRoomsListByType*/,
-} from "../controllers/rooms.controller.js";
+} from "../controllers/roomController.js";
 
 const router = Router();
 

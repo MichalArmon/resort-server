@@ -1,17 +1,13 @@
-import Room from "../models/Room";
+// controllers/roomController.js
+import Room from "../models/Room.js";
 
-// controllers/rooms.controller.js
-
-/** helper: ממיר מחרוזת ל-slug */
 const slugify = (s = "") =>
   s
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
-/** GET /api/v1/rooms/types
- * מחזיר רשימת סוגים ייחודיים בפורמט {label, type, slug, count}
- */
+// GET /api/v1/rooms/types
 export const getRoomTypes = async (req, res) => {
   try {
     const grouped = await Room.aggregate([
@@ -20,28 +16,24 @@ export const getRoomTypes = async (req, res) => {
     ]);
 
     const types = grouped.map((g) => {
-      const label = g._id; // לדוגמה: "Deluxe Villa"
-      const slug = slugify(label); // -> "deluxe-villa"
+      const label = g._id; // ex: "Standard Bungalow"
+      const slug = slugify(label); // -> "standard-bungalow"
       return { label, type: slug, slug, count: g.count };
     });
 
-    return res.json(types);
+    res.json(types);
   } catch (e) {
     console.error("getRoomTypes error:", e);
-    return res.status(500).json({ message: "Failed to fetch room types" });
+    res.status(500).json({ message: "Failed to fetch room types" });
   }
 };
 
-/** GET /api/v1/rooms/:type
- * מחזיר נתוני חדר “עשירים” לפי סוג (type=slug של roomType)
- * הערה: כאן מחזירים חדר אחד מייצג מהסוג. אם תרצי רשימה — ראו ההערה למטה.
- */
+// GET /api/v1/rooms/:type
 export const getRoomByType = async (req, res) => {
   try {
-    const { type } = req.params; // למשל "standard-bungalow"
+    const { type } = req.params; // slug, e.g. "standard-bungalow"
     if (!type) return res.status(400).json({ message: "type is required" });
 
-    // מביאים רק את השדות הנדרשים ומממשים slugify
     const docs = await Room.find({}, { __v: 0 }).lean();
     const match = docs.find((r) => slugify(r.roomType) === type);
 
@@ -57,9 +49,9 @@ export const getRoomByType = async (req, res) => {
       ...(Array.isArray(match.amenities) ? match.amenities : []),
     ];
 
-    return res.json({
+    res.json({
       type, // slug
-      label: title,
+      label: title, // for display
       title,
       subtitle,
       hero,
@@ -77,27 +69,6 @@ export const getRoomByType = async (req, res) => {
     });
   } catch (e) {
     console.error("getRoomByType error:", e);
-    return res.status(500).json({ message: "Failed to fetch room by type" });
+    res.status(500).json({ message: "Failed to fetch room by type" });
   }
 };
-
-/* ========= אופציונלי: אם תרצי להחזיר רשימת כל החדרים עבור סוג =========
-export const getRoomsListByType = async (req, res) => {
-  try {
-    const { type } = req.params;
-    const docs = await Room.find({}).lean();
-    const list = docs.filter(r => slugify(r.roomType) === type);
-    if (!list.length) return res.status(404).json({ message: "Room type not found" });
-    return res.json({
-      type,
-      count: list.length,
-      rooms: list.map(r => ({
-        id: r._id, roomName: r.roomName, capacity: r.capacity,
-        basePrice: r.basePrice, amenities: r.amenities, imageURL: r.imageURL
-      }))
-    });
-  } catch (e) {
-    return res.status(500).json({ message: "Failed to fetch rooms list" });
-  }
-};
-*/

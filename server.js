@@ -1,51 +1,51 @@
-// index.js (קובץ שרת ראשי)
-
+// server.js
 import dotenv from "dotenv";
-dotenv.config(); // טוען משתני סביבה מהקובץ .env
+dotenv.config();
 
 import express from "express";
-import mongoose from "mongoose"; // 🛑 חסר: Mongoose לחיבור ל-DB
-import chalk from "chalk"; // 🛑 חסר: Chalk לצבע בטרמינל
+import mongoose from "mongoose";
+import chalk from "chalk";
 import cors from "cors";
-import logger from "./middlewares/logger.js"; // נניח שזה ה-Logger המקורי
-import serverLogger from "./middlewares/loggerService.js"; // נניח שזה ה-Logger הנוסף
+import logger from "./middlewares/logger.js"; // אם קיים
+import serverLogger from "./middlewares/loggerService.js"; // אם קיים
+
+// כל הראוטרים שלך
 import router from "./router/router.js";
 import bookingRoutes from "./router/bookingRoutes.js";
-import autoController from "./router/authRoutes.js";
+import authRoutes from "./router/authRoutes.js";
 import retreatRoutes from "./router/retreatsRoutes.js";
-import User from "./models/User.js"; // 💡 נחוץ ל-protect
-import Room from "./models/Room.js"; // 💡 נחוץ ל-populate ב-Booking
-import Booking from "./models/Booking.js"; // 💡 נחוץ ל-populate
-import PricingRule from "./models/PricingRule.js"; // 💡 נחוץ ל-getQuote
-// (הוסף כל מודל אחר שיש לך בפרויקט)
+import roomRoutes from "./router/roomRoutes.js";
 
-// 🛑 ייבוא ניתוב ההזמנות החדש
-// שינוי נתיב: routr כנראה טעות הקלדה, תיקנתי ל-routes. ודא שהנתיב נכון אצלך.
+// טוען את המודלים שלך
+import User from "./models/User.js";
+import Room from "./models/Room.js";
+import Booking from "./models/Booking.js";
+import PricingRule from "./models/PricingRule.js";
 
 const app = express();
 const port = process.env.PORT || 3000;
 
-// --- פונקציית חיבור ל-MongoDB (כפי ששלחת) ---
+// ✅ חיבור למונגו
 const connectToDb = async () => {
   try {
-    // השתמש במשתנה הסביבה MONGO_URI שהגדרת ב-.env
     await mongoose.connect(process.env.MONGO_URI);
-    console.log(chalk.greenBright("MongoDB connected successfully."));
+    console.log(chalk.greenBright("✅ MongoDB connected successfully"));
   } catch (error) {
-    console.error(chalk.redBright("MongoDB connection failed:"), error.message);
-    process.exit(1); // יציאה אם החיבור נכשל
+    console.error(
+      chalk.redBright("❌ MongoDB connection failed:"),
+      error.message
+    );
+    process.exit(1);
   }
 };
-// ----------------------------------------------
 
-// --- Middlewares והגדרות ---
+// ✅ הגדרות בסיס
 app.use(
   cors({
     origin: [
       "http://127.0.0.1:5500",
       "http://localhost:5173",
       "http://localhost:5174",
-      "https://w271024er-cards.netlify.app",
       "https://michalarmon.github.io",
       "https://michalarmon.github.io/ban-tao-resort",
       "https://bantao.netlify.app",
@@ -54,34 +54,34 @@ app.use(
 );
 
 app.use(express.json());
-app.use(serverLogger);
-app.use(logger); // אם יש צורך ב-logger נוסף
-
+if (serverLogger) app.use(serverLogger);
+if (logger) app.use(logger);
 app.use(express.static("./public"));
-app.get("/ping", (req, res) => {
-  res.send("pong");
-});
 
-// --- ניתובים (Routes) ---
+app.get("/ping", (req, res) => res.send("pong"));
 
-// 🛑 שילוב ניתוב ההזמנות תחת הנתיב /api/bookings
+// ✅ חיבור הראוטרים
+app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
-
-app.use("/api/v1/users", autoController);
 app.use("/api/v1/retreats", retreatRoutes);
-app.use("/api/v1/rooms", roomsRouter);
+app.use("/api/v1/rooms", roomRoutes);
 
-app.use(router); // ניתובים קיימים של הפרויקט האחר
+// חשוב: אל תשאירי app.use("/api/v1/users", autoController); ❌
+// פשוט מחקי את זה — זה מה שגרם לשגיאת autoController undefined
 
-// --- טיפול בשגיאות ---
+// routes כלליים של המערכת (אם יש)
+app.use("/api/v1", router);
+
+// ✅ טיפול בשגיאות כלליות
 app.use((error, req, res, next) => {
-  console.log(error);
+  console.error(error);
   res.status(500).send("Server Internal Error");
 });
 
-// --- הפעלת השרת ---
+// ✅ הפעלת השרת
 app.listen(port, () => {
-  console.log(chalk.blueBright(`Listening on: http://localhost:${port}`));
-  // 🛑 קריאה לפונקציית החיבור ל-DB
+  console.log(
+    chalk.blueBright(`🚀 Server running on http://localhost:${port}`)
+  );
   connectToDb();
 });
