@@ -69,6 +69,7 @@ app.use("/api/v1/bookings", bookingRoutes);
 
 app.use("/api/v1/users", autoController);
 app.use("/api/v1/retreats", retreatRoutes);
+app.use("/api/v1/rooms", roomsRouter);
 
 app.use(router); // ניתובים קיימים של הפרויקט האחר
 
