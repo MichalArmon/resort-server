@@ -71,3 +71,45 @@ export const getRoomByType = async (req, res) => {
     res.status(500).json({ message: "Failed to fetch room by type" });
   }
 };
+// POST /api/v1/rooms/types
+export const createRoomType = async (req, res) => {
+  try {
+    const {
+      title,
+      slug,
+      hero,
+      images,
+      features,
+      maxGuests,
+      sizeM2,
+      bedType,
+      priceBase,
+      currency,
+      stock,
+      active,
+    } = req.body;
+
+    // ודא שיש שם לחדר
+    if (!title) return res.status(400).json({ message: "Missing title" });
+
+    const room = await RoomType.create({
+      title,
+      slug: slug || slugify(title),
+      hero,
+      images: images || [],
+      features: features || [],
+      maxGuests,
+      sizeM2,
+      bedType,
+      priceBase,
+      currency: currency || "USD",
+      stock: stock ?? 0,
+      active: active !== false,
+    });
+
+    res.status(201).json({ message: "Room type created", room });
+  } catch (e) {
+    console.error("createRoomType error:", e);
+    res.status(500).json({ message: "Failed to create room type" });
+  }
+};
