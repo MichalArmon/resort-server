@@ -1,0 +1,36 @@
+{
+  "Bungalow": {
+    "slug": "bungalow",
+    "title": "Bungalow",
+    "blurb": "Cozy bungalow near the lagoon...",
+    "features": ["AC", "Wi-Fi", "Sea view"],
+    "maxGuests": 3,
+    "sizeM2": 28,
+    "bedType": "King",
+    "priceBase": 120,
+    "currency": "USD",
+    "hero": "/rooms/bungalow/hero.jpg",
+    "images": [
+      "/rooms/bungalow/1.jpg",
+      "/rooms/bungalow/2.jpg",
+      "/rooms/bungalow/3.jpg"
+    ],
+    "stock": 1,
+    "active": true
+  },
+  "Family Suite": {
+    "slug": "family-suite",
+    "title": "Family Suite",
+    "blurb": "Spacious suite for families...",
+    "features": ["AC", "Wi-Fi", "Kitchenette"],
+    "maxGuests": 5,
+    "sizeM2": 45,
+    "bedType": "Queen",
+    "priceBase": 180,
+    "currency": "USD",
+    "hero": "/rooms/family/hero.jpg",
+    "images": ["/rooms/family/1.jpg", "/rooms/family/2.jpg"],
+    "stock": 2,
+    "active": true
+  }
+}
