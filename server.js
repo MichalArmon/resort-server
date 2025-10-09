@@ -15,6 +15,7 @@ import bookingRoutes from "./router/bookingRoutes.js";
 import authRoutes from "./router/authRoutes.js";
 import retreatRoutes from "./router/retreatsRoutes.js";
 import roomRoutes from "./router/roomRoutes.js";
+import uploadsRoutes from "./router/uploadsRoutes.js";
 
 // טוען את המודלים שלך
 import User from "./models/User.js";
@@ -65,6 +66,7 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/retreats", retreatRoutes);
 app.use("/api/v1/rooms", roomRoutes);
+app.use("/api/v1/uploads", uploadsRoutes);
 
 // חשוב: אל תשאירי app.use("/api/v1/users", autoController); ❌
 // פשוט מחקי את זה — זה מה שגרם לשגיאת autoController undefined
