@@ -3,11 +3,11 @@ import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 // 🛑 ייבוא פונקציות ה-Controller
 import {
   checkAvailability,
-  getQuote,
-  createBooking,
-  getUsersBookings, // 💡 נוסף
-  getAllBookings, // 💡 נוסף
-  updateBooking, // 💡 נוסף
+  // getQuote,
+  // createBooking,
+  // getUsersBookings, // 💡 נוסף
+  // getAllBookings, // 💡 נוסף
+  // updateBooking, // 💡 נוסף
 } from "../controllers/bookingController.js";
 
 const router = Router();
@@ -18,30 +18,30 @@ router.get("/availability", checkAvailability);
 
 // 2. POST /api/bookings/quote
 // מקבל פרטי הזמנה ומחשב מחיר סופי
-router.post("/quote", getQuote);
+// router.post("/quote", getQuote);
 
-// 3. POST /api/bookings/book
-// יוצר הזמנה חדשה בסטטוס Pending
-router.post("/book", createBooking);
+// // 3. POST /api/bookings/book
+// // יוצר הזמנה חדשה בסטטוס Pending
+// router.post("/book", createBooking);
 
-// ----------------------------------------------------
-// ROUTES הדורשים אימות והרשאה
-// ----------------------------------------------------
+// // ----------------------------------------------------
+// // ROUTES הדורשים אימות והרשאה
+// // ----------------------------------------------------
 
-// 2. צפייה בהזמנות שלי: דורש רק להיות מחובר (user, guest, admin)
-//    הפונקציה 'protect' תספיק כאן.
-router.get("/my-bookings", protect, getUsersBookings);
+// // 2. צפייה בהזמנות שלי: דורש רק להיות מחובר (user, guest, admin)
+// //    הפונקציה 'protect' תספיק כאן.
+// router.get("/my-bookings", protect, getUsersBookings);
 
-// 3. צפייה בכל ההזמנות: מוגבל רק למנהלים ועובדים
-//    דרושים: א. להיות מחובר. ב. להיות אחד מהתפקידים המורשים.
-router.get(
-  "/all-bookings",
-  protect,
-  restrictTo("admin", "employee"), // 🔑 ההגבלה על התפקידים
-  getAllBookings
-);
+// // 3. צפייה בכל ההזמנות: מוגבל רק למנהלים ועובדים
+// //    דרושים: א. להיות מחובר. ב. להיות אחד מהתפקידים המורשים.
+// router.get(
+//   "/all-bookings",
+//   protect,
+//   restrictTo("admin", "employee"), // 🔑 ההגבלה על התפקידים
+//   getAllBookings
+// );
 
-// 4. ניהול הזמנה (לדוגמה: ביטול/שינוי סטטוס): מוגבל למנהלים ועובדים
-router.patch("/:id", protect, restrictTo("admin", "employee"), updateBooking);
+// // 4. ניהול הזמנה (לדוגמה: ביטול/שינוי סטטוס): מוגבל למנהלים ועובדים
+// router.patch("/:id", protect, restrictTo("admin", "employee"), updateBooking);
 
 export default router;
