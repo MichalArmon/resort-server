@@ -46,7 +46,9 @@ export const getRoomByType = async (req, res) => {
 
     const slug = rt.slug || slugify(rt.title || "");
     const hero = rt.hero || null;
-    const gallery = rt.images?.length ? rt.images : hero ? [hero] : [];
+
+    // ✅ תיקון: הגדרת המשתנה המקומי כ-images, והבטחת עקביות
+    const images = rt.images?.length ? rt.images : hero ? [hero] : [];
 
     res.json({
       type: slug,
@@ -54,7 +56,7 @@ export const getRoomByType = async (req, res) => {
       title: rt.title,
       subtitle: "",
       hero,
-      gallery,
+      images, // 🔑 התיקון הקריטי: החלפת 'gallery' במפתח 'images'
       features: rt.features || [],
       maxGuests: rt.maxGuests ?? null,
       sizeM2: rt.sizeM2 ?? null,
