@@ -2,7 +2,10 @@
 import { Router } from "express";
 import {
   getRoomTypes,
-  getRoomByType /*, getRoomsListByType*/,
+  getRoomByType,
+  createRoomType,
+  updateRoomTypeBySlug,
+  deleteRoomTypeBySlug,
 } from "../controllers/roomController.js";
 import RoomType from "../models/Room.js";
 
@@ -27,21 +30,10 @@ router.post("/types", async (req, res, next) => {
   }
 });
 
-// === עדכון RoomType קיים לפי slug ===
-router.put("/types/:slug", async (req, res, next) => {
-  try {
-    const { slug } = req.params;
-    const doc = await RoomType.findOneAndUpdate({ slug }, req.body, {
-      new: true,
-      runValidators: true,
-    });
-    if (!doc)
-      return res.status(404).json({ message: `RoomType '${slug}' not found` });
-    res.json(doc);
-  } catch (e) {
-    console.error("❌ Error updating RoomType:", e.message);
-    next(e);
-  }
-});
+// עדכון לפי slug
+router.put("/types/:slug", updateRoomTypeBySlug);
+
+// מחיקה לפי slug (מומלץ להוסיף)
+router.delete("/types/:slug", deleteRoomTypeBySlug);
 
 export default router;
