@@ -1,10 +1,16 @@
-// controllers/booking.controller.js (רק הפונקציה checkAvailability)
+// controllers/booking.controller.js
 import Booking from "../models/Booking.js";
-import Room from "../models/Room.js";
+import RoomType from "../models/Room.js"; // 👈 חשוב: להשתמש ב-RoomType
 import Retreat from "../models/Retreat.js";
 
 export const checkAvailability = async (req, res) => {
-  const { checkIn, checkOut, guests, rooms } = req.query;
+  const {
+    checkIn,
+    checkOut,
+    guests,
+    rooms,
+    roomType: roomTypeParam,
+  } = req.query;
   if (!checkIn || !checkOut || !guests || !rooms) {
     return res.status(400).json({
       message: "Check-in, Check-out, guests, and rooms are required.",
@@ -18,7 +24,7 @@ export const checkAvailability = async (req, res) => {
   const minCapacityPerRoom = Math.ceil(requiredGuests / requiredRooms);
 
   try {
-    // 0) ריטריט שסוגר את האתר
+    // 0) סגירה בגלל ריטריט
     const closedRetreat = await Retreat.findOne({
       isClosed: true,
       startDate: { $lt: checkOutDate },
@@ -32,67 +38,89 @@ export const checkAvailability = async (req, res) => {
       });
     }
 
-    // 1) כל החדרים שעומדים בדרישת קיבולת (מועמדים)
-    //    אם roomType הוא ref למודל RoomType -> נעשה populate להביא slug/title
-    const candidateRooms = await Room.find({
-      capacity: { $gte: minCapacityPerRoom },
-    })
-      .select("_id roomType capacity basePrice")
-      .populate({ path: "roomType", select: "slug title" }); // מחקי שורה זו אם roomType הוא string
-
-    // 2) חישוב stock כולל לפי סוג (מתוך כל החדרים המתאימים)
-    //    key יהיה slug (אם יש populate) או room.roomType כנ"ל
-    const totalByType = {};
-    for (const r of candidateRooms) {
-      const key = r.roomType?.slug || r.roomType; // תמיכה גם ב-ref וגם במחרוזת
-      totalByType[key] = totalByType[key] || { totalStock: 0 };
-      totalByType[key].totalStock += 1;
-      // נשמור גם title לנוחות בפרונט
-      if (r.roomType?.title) totalByType[key].title = r.roomType.title;
-    }
-
-    // 3) כל החדרים שהתפוסים בטווח (Confirmed; אפשר לשקול לכלול גם Pending למניעת דאבל־בוקינג)
-    const occupiedBookings = await Booking.find({
-      status: "Confirmed", // שקלי להרחיב ל: { $in: ["Confirmed","Pending"] }
-      $and: [
-        { checkInDate: { $lt: checkOutDate } },
-        { checkOutDate: { $gt: checkInDate } },
+    // 1) סינון סוגי חדרים (סלחני ל-maxGuests חסר), ותמיכה ב-roomType כ-slug או _id
+    const typeFilter = {
+      active: true,
+      $or: [
+        { maxGuests: { $gte: minCapacityPerRoom } },
+        { maxGuests: { $exists: false } },
+        { maxGuests: null },
       ],
-    }).select("bookedRoom");
+    };
+    if (roomTypeParam) {
+      typeFilter.$and = [
+        {
+          $or: [
+            { slug: roomTypeParam },
+            /^[0-9a-fA-F]{24}$/.test(roomTypeParam)
+              ? { _id: roomTypeParam }
+              : null,
+          ].filter(Boolean),
+        },
+      ];
+    }
 
-    const occupiedIds = new Set(
-      occupiedBookings.map((b) => String(b.bookedRoom))
+    const types = await RoomType.find(typeFilter).select(
+      "slug title stock priceBase currency maxGuests"
     );
 
-    // 4) סינון רשימת החדרים הפנויים בפועל
-    const availableRooms = candidateRooms.filter(
-      (r) => !occupiedIds.has(String(r._id))
+    // דיבוג (להסרה אחרי בדיקה)
+    console.log("[AVAIL] filter:", typeFilter);
+    console.log(
+      "[AVAIL] found types:",
+      types.map((t) => ({
+        slug: t.slug,
+        title: t.title,
+        stock: t.stock,
+        maxGuests: t.maxGuests,
+      }))
     );
 
-    // 5) זמינות לפי סוג: available / occupied
+    if (!types?.length) {
+      return res.status(200).json({
+        checkIn: checkInDate,
+        checkOut: checkOutDate,
+        availableRooms: [],
+        summary: {},
+        message: `Only 0 units available; you requested ${requiredRooms}.`,
+      });
+    }
+
+    // 2) הזמנות חופפות (כולל Pending למניעת דאבל־בוקינג)
+    const overlapping = await Booking.find({
+      status: { $in: ["Confirmed", "Pending"] },
+      checkInDate: { $lt: checkOutDate },
+      checkOutDate: { $gt: checkInDate },
+    }).select("bookedRoomType bookedRoomTypeSlug");
+
+    const occupiedBySlug = {};
+    for (const b of overlapping) {
+      const key =
+        b.bookedRoomTypeSlug ||
+        (typeof b.bookedRoomType === "object" && b.bookedRoomType?.slug) ||
+        (typeof b.bookedRoomType === "string" ? b.bookedRoomType : null);
+      if (!key) continue;
+      occupiedBySlug[key] = (occupiedBySlug[key] || 0) + 1;
+    }
+
+    // 3) תקציר לפי stock
     const summary = {};
-    for (const r of candidateRooms) {
-      const key = r.roomType?.slug || r.roomType;
-      if (!summary[key]) {
-        const base = totalByType[key] || { totalStock: 0 };
-        summary[key] = {
-          title: base.title || (r.roomType?.title ?? key),
-          totalStock: base.totalStock,
-          availableUnits: 0,
-          occupiedUnits: 0,
-        };
-      }
-    }
-    for (const r of candidateRooms) {
-      const key = r.roomType?.slug || r.roomType;
-      if (occupiedIds.has(String(r._id))) {
-        summary[key].occupiedUnits += 1;
-      } else {
-        summary[key].availableUnits += 1;
-      }
+    for (const t of types) {
+      const slug = t.slug;
+      const totalStock = Math.max(0, t.stock || 0);
+      const occupiedUnits = Math.max(0, occupiedBySlug[slug] || 0);
+      const availableUnits = Math.max(0, totalStock - occupiedUnits);
+
+      summary[slug] = {
+        title: t.title,
+        totalStock,
+        occupiedUnits,
+        availableUnits,
+        currency: t.currency || "USD",
+        priceBase: t.priceBase ?? null,
+      };
     }
 
-    // 6) האם יש מספיק יחידות ביחד לעוד הזמנה של requiredRooms?
     const totalAvailableUnits = Object.values(summary).reduce(
       (acc, s) => acc + (s.availableUnits || 0),
       0
@@ -108,17 +136,26 @@ export const checkAvailability = async (req, res) => {
       });
     }
 
-    // אופציונלי: לסנן ולהחזיר רק N חדרים לפי הדרישה
-    // כרגע מחזירים את כל החדרים הפנויים + תקציר summary
+    const availableRooms = Object.entries(summary)
+      .filter(([, s]) => s.availableUnits > 0)
+      .map(([slug, s]) => ({
+        _id: slug,
+        slug,
+        title: s.title,
+        priceBase: s.priceBase,
+        currency: s.currency || "USD",
+        availableUnits: s.availableUnits,
+      }));
+
     return res.status(200).json({
       checkIn: checkInDate,
       checkOut: checkOutDate,
-      availableRooms, // רשימת חדרים ספציפיים
-      summary, // סיכום לפי סוג חדר: totalStock/available/occupied
+      availableRooms,
+      summary,
       message: `Found ${totalAvailableUnits} units available.`,
     });
-  } catch (error) {
-    console.error("Error fetching availability:", error);
+  } catch (err) {
+    console.error("Error fetching availability:", err);
     return res
       .status(500)
       .json({ message: "Server error during availability check." });
