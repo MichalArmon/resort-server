@@ -1,8 +1,26 @@
-// controllers/booking.controller.js
+// server/controllers/bookingController.js
 import Booking from "../models/Booking.js";
-import RoomType from "../models/Room.js"; // 👈 חשוב: להשתמש ב-RoomType
+import RoomType from "../models/Room.js"; // הקובץ Room.js מייצא את המודל בשם "RoomType"
 import Retreat from "../models/Retreat.js";
 
+/* ---------- Helpers (Cloudinary URLs + image normalization) ---------- */
+const CLD = process.env.CLOUDINARY_CLOUD_NAME || "dhje7hbxd";
+const cldUrl = (pid) =>
+  pid
+    ? `https://res.cloudinary.com/${CLD}/image/upload/f_auto,q_auto/${pid}`
+    : null;
+
+const toImgObj = (x) => {
+  if (!x) return null;
+  if (typeof x === "string") return { publicId: x, url: cldUrl(x) };
+  const pid = x.public_id || x.publicId || null;
+  const url = x.secure_url || x.url || cldUrl(pid);
+  return { publicId: pid, url: url || null, alt: x.alt || "" };
+};
+
+/* ==================================================================== */
+/* =                         CHECK AVAILABILITY                        = */
+/* ==================================================================== */
 export const checkAvailability = async (req, res) => {
   const {
     checkIn,
@@ -11,6 +29,7 @@ export const checkAvailability = async (req, res) => {
     rooms,
     roomType: roomTypeParam,
   } = req.query;
+
   if (!checkIn || !checkOut || !guests || !rooms) {
     return res.status(400).json({
       message: "Check-in, Check-out, guests, and rooms are required.",
@@ -24,7 +43,7 @@ export const checkAvailability = async (req, res) => {
   const minCapacityPerRoom = Math.ceil(requiredGuests / requiredRooms);
 
   try {
-    // 0) סגירה בגלל ריטריט
+    /* 0) אתר סגור בגלל ריטריט */
     const closedRetreat = await Retreat.findOne({
       isClosed: true,
       startDate: { $lt: checkOutDate },
@@ -38,7 +57,7 @@ export const checkAvailability = async (req, res) => {
       });
     }
 
-    // 1) סינון סוגי חדרים (סלחני ל-maxGuests חסר), ותמיכה ב-roomType כ-slug או _id
+    /* 1) שליפת RoomTypes פעילים (סלחני לשדות חסרים) + סינון אופציונלי לפי roomType */
     const typeFilter = {
       active: true,
       $or: [
@@ -61,19 +80,7 @@ export const checkAvailability = async (req, res) => {
     }
 
     const types = await RoomType.find(typeFilter).select(
-      "slug title stock priceBase currency maxGuests"
-    );
-
-    // דיבוג (להסרה אחרי בדיקה)
-    console.log("[AVAIL] filter:", typeFilter);
-    console.log(
-      "[AVAIL] found types:",
-      types.map((t) => ({
-        slug: t.slug,
-        title: t.title,
-        stock: t.stock,
-        maxGuests: t.maxGuests,
-      }))
+      "slug title stock priceBase currency maxGuests hero images"
     );
 
     if (!types?.length) {
@@ -86,7 +93,7 @@ export const checkAvailability = async (req, res) => {
       });
     }
 
-    // 2) הזמנות חופפות (כולל Pending למניעת דאבל־בוקינג)
+    /* 2) הזמנות חופפות (כולל Pending למניעת דאבל־בוקינג) */
     const overlapping = await Booking.find({
       status: { $in: ["Confirmed", "Pending"] },
       checkInDate: { $lt: checkOutDate },
@@ -103,11 +110,11 @@ export const checkAvailability = async (req, res) => {
       occupiedBySlug[key] = (occupiedBySlug[key] || 0) + 1;
     }
 
-    // 3) תקציר לפי stock
+    /* 3) חישוב תקציר זמינות לפי stock */
     const summary = {};
     for (const t of types) {
       const slug = t.slug;
-      const totalStock = Math.max(0, t.stock || 0);
+      const totalStock = Math.max(0, Number(t.stock) || 0);
       const occupiedUnits = Math.max(0, occupiedBySlug[slug] || 0);
       const availableUnits = Math.max(0, totalStock - occupiedUnits);
 
@@ -117,7 +124,7 @@ export const checkAvailability = async (req, res) => {
         occupiedUnits,
         availableUnits,
         currency: t.currency || "USD",
-        priceBase: t.priceBase ?? null,
+        priceBase: Number.isFinite(t.priceBase) ? t.priceBase : null,
       };
     }
 
@@ -136,16 +143,29 @@ export const checkAvailability = async (req, res) => {
       });
     }
 
+    /* 4) יצירת רשימת הצעות "ידידותית לפרונט", כולל תמונות */
     const availableRooms = Object.entries(summary)
       .filter(([, s]) => s.availableUnits > 0)
-      .map(([slug, s]) => ({
-        _id: slug,
-        slug,
-        title: s.title,
-        priceBase: s.priceBase,
-        currency: s.currency || "USD",
-        availableUnits: s.availableUnits,
-      }));
+      .map(([slug, s]) => {
+        const t = types.find((x) => x.slug === slug);
+        const hero = toImgObj(t?.hero);
+        const firstImg = Array.isArray(t?.images)
+          ? toImgObj(t.images[0])
+          : null;
+
+        return {
+          _id: slug, // מזהה לוגי לתצוגה
+          slug,
+          title: s.title,
+          priceBase: s.priceBase,
+          currency: s.currency || "USD",
+          availableUnits: s.availableUnits,
+          // תמונות/תיאור בסיסי כדי שכרטיס החדר יציג יפה בלי קריאה נוספת
+          hero: hero,
+          heroUrl: hero?.url || null,
+          imageUrl: firstImg?.url || null,
+        };
+      });
 
     return res.status(200).json({
       checkIn: checkInDate,
