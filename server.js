@@ -18,6 +18,7 @@ import retreatRoutes from "./router/retreatsRoutes.js";
 import roomRoutes from "./router/roomRoutes.js";
 import uploadsRoutes from "./router/uploadsRoutes.js";
 import workshopsRoutes from "./router/workshopsRoutes.js";
+import treatmentsRoutes from "./router/treatmentsRoutes.js";
 
 // (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
 import "./models/User.js";
@@ -85,6 +86,7 @@ app.use("/api/v1/retret", retreatRoutes);
 app.use("/api/v1/rooms", roomRoutes);
 app.use("/api/v1/uploads", uploadsRoutes);
 app.use("/api/v1/workshops", workshopsRoutes);
+app.use("/api/v1/treatments", treatmentsRoutes);
 
 // ראוטים כלליים תחת /api/v1
 app.use("/api/v1", router);
