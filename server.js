@@ -21,6 +21,7 @@ import workshopsRoutes from "./router/workshopsRoutes.js";
 import treatmentsRoutes from "./router/treatmentsRoutes.js";
 import recurringRulesRoutes from "./router/recurringRulesRoutes.js";
 import scheduleRoutes from "./router/scheduleRoutes.js";
+import manualScheduleRoutes from "./router/manualScheduleRoutes.js";
 
 // (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
 import "./models/User.js";
@@ -91,6 +92,7 @@ app.use("/api/v1/workshops", workshopsRoutes);
 app.use("/api/v1/treatments", treatmentsRoutes);
 app.use("/api/v1/recurring-rules", recurringRulesRoutes);
 app.use("/api/v1/schedule", scheduleRoutes);
+app.use("/api/v1/schedule", manualScheduleRoutes);
 
 // ראוטים כלליים תחת /api/v1
 app.use("/api/v1", router);
