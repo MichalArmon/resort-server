@@ -3,7 +3,7 @@ import { protect, restrictTo } from "../middlewares/authMiddleware.js";
 // 🛑 ייבוא פונקציות ה-Controller
 import {
   checkAvailability,
-  // getQuote,
+  getQuote,
   // createBooking,
   // getUsersBookings, // 💡 נוסף
   // getAllBookings, // 💡 נוסף
@@ -18,7 +18,7 @@ router.get("/availability", checkAvailability);
 
 // 2. POST /api/bookings/quote
 // מקבל פרטי הזמנה ומחשב מחיר סופי
-// router.post("/quote", getQuote);
+router.post("/quote", getQuote);
 
 // // 3. POST /api/bookings/book
 // // יוצר הזמנה חדשה בסטטוס Pending
