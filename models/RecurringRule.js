@@ -5,6 +5,11 @@ const { Schema, Types } = mongoose;
 const RecurringRuleSchema = new Schema(
   {
     workshopId: { type: Types.ObjectId, ref: "Workshop", required: true },
+    studio: {
+      type: String,
+      enum: ["Studio A", "Studio B"],
+      default: "Studio A",
+    },
     timezone: { type: String, default: "Asia/Jerusalem" }, // חשוב לטפל בשעון קיץ
     startTime: { type: String, required: true }, // "18:00" (HH:mm)
     durationMin: { type: Number, default: 60 },
