@@ -97,12 +97,11 @@ async function buildDefaultGridFromRules() {
       continue;
     }
 
-    // 🔥🔥 התיקון הקריטי: משתמשים בשעת ההתחלה המלאה (HH:MM) מה-DB כמפתח
+    // 🔥🔥 התיקון הקריטי: שמירת שעת ההתחלה המלאה (HH:MM) מה-DB כמפתח
     const hourKey = rule.startTime || "00:00";
-    // ⬅️ אם ה-DB שומר "18:30", hourKey יהיה "18:30". זה יתאים ל-Frontend.
 
     const workshopId = rule.workshopId?._id || rule.workshopId;
-    const studio = rule.studio || "Studio A";
+    const studio = rule.studio || "Studio A"; // ברירת מחדל ל-Studio A
 
     if (!workshopId) continue; // עוברים על ימי השבוע של הכלל (BYDAY)
 
@@ -133,7 +132,7 @@ async function buildDefaultGridFromRules() {
 async function buildGridOccurrences(from, to, weekKey = "default") {
   const fromDate = buildLocalDateTime(from, "00:00");
   const toDate = buildLocalDateTime(to, "23:59");
-  const rows = [];
+  const rows = []; // 🎯 תיקון: הסרת populate שהיה גורם לשגיאת 500
 
   const scheduleDoc = await Schedule.findOne({ weekKey });
   const grid = scheduleDoc?.grid || {};
