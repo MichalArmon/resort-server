@@ -11,7 +11,7 @@ const TZ = "Asia/Jerusalem"; // מומלץ גם: process.env.TZ = "Asia/Jerusale
 
 /* ---------- Helpers (TZ-safe) ---------- */
 
-// מפתחי תאריך/שעה לוקאליים (YYYY-MM-DD, HH:00) לפי Asia/Jerusalem
+// מפתחי תאריך/שעה לוקאליים (YYYY-MM-DD, HH:00)
 function toLocalKeys(date) {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: TZ,
@@ -25,12 +25,12 @@ function toLocalKeys(date) {
   const parts = Object.fromEntries(
     fmt.formatToParts(date).map((p) => [p.type, p.value])
   );
-  const dateKey = `${parts.year}-${parts.month}-${parts.day}`; // YYYY-MM-DD
-  const hourKey = `${String(parts.hour).padStart(2, "0")}:00`; // HH:00
+  const dateKey = `${parts.year}-${parts.month}-${parts.day}`;
+  const hourKey = `${String(parts.hour).padStart(2, "0")}:00`;
   return { dateKey, hourKey };
 }
 
-// בונה Date מקומי לפי תאריך "YYYY-MM-DD" ושעה "HH:mm"
+// בונה Date לוקאלי
 function buildLocalDateTime(dateStr, timeStr = "00:00") {
   const [h = "00", m = "00"] = String(timeStr).split(":");
   const hh = String(h).padStart(2, "0");
@@ -38,23 +38,20 @@ function buildLocalDateTime(dateStr, timeStr = "00:00") {
   return new Date(`${dateStr}T${hh}:${mm}:00`);
 }
 
-// מחשב occurrences מטווח תאריכים מתוך RecurringRule (on-the-fly)
+// מחשב occurrences מחוקי RRULE
 async function buildOccurrences(from, to) {
   const fromDate = buildLocalDateTime(from, "00:00");
   const toDate = buildLocalDateTime(to, "23:59");
-
   const rules = await RecurringRule.find({ isActive: true }).populate(
     "workshopId"
   );
   const rows = [];
 
   for (const rule of rules) {
-    // ולידציית RRULE
     let opts;
     try {
       opts = RRule.parseString(rule.rrule);
     } catch {
-      // כלל שבור – לא מפיל את כל הבקשה
       continue;
     }
 
@@ -71,20 +68,14 @@ async function buildOccurrences(from, to) {
     }
 
     const r = new RRule(opts);
-    const occ = r.between(fromDate, toDate, true); // כולל את ה־from אם תואם
-
-    // Exceptions נשמרות כ־"YYYY-MM-DD" — נשווה לוקאלי
+    const occ = r.between(fromDate, toDate, true);
     const excSet = new Set((rule.exceptions || []).map((d) => d));
 
     for (const startLocal of occ) {
       const { dateKey, hourKey } = toLocalKeys(startLocal);
       if (excSet.has(dateKey)) continue;
 
-      const durationMin =
-        typeof rule.durationMin === "number" && rule.durationMin > 0
-          ? rule.durationMin
-          : 60;
-
+      const durationMin = rule.durationMin > 0 ? rule.durationMin : 60;
       const endLocal = new Date(startLocal.getTime() + durationMin * 60000);
 
       rows.push({
@@ -105,13 +96,11 @@ async function buildOccurrences(from, to) {
   rows.sort((a, b) =>
     (a.date + a.hour + a.studio).localeCompare(b.date + b.hour + b.studio)
   );
-
   return rows;
 }
 
 /* ============================================================
  *  GUEST: GET /api/v1/schedule?from=YYYY-MM-DD&to=YYYY-MM-DD
- *  מחזיר occurrences מחוקי RRULE (מערך שורות)
  * ============================================================ */
 export const getSchedule = async (req, res) => {
   try {
@@ -121,17 +110,15 @@ export const getSchedule = async (req, res) => {
         .status(400)
         .json({ error: "from and to query params are required (YYYY-MM-DD)" });
     }
+
     const fromDate = buildLocalDateTime(from, "00:00");
     const toDate = buildLocalDateTime(to, "23:59");
     if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) {
       return res.status(400).json({ error: "Invalid from/to dates" });
     }
-    if (fromDate > toDate) {
-      return res.status(400).json({ error: "`from` must be <= `to`" });
-    }
 
     const rows = await buildOccurrences(from, to);
-    res.json(rows); // שומר על הפורמט הקיים: מערך נטו
+    res.json(rows);
   } catch (err) {
     console.error("getSchedule error:", err);
     res.status(500).json({ error: err.message });
@@ -140,12 +127,9 @@ export const getSchedule = async (req, res) => {
 
 /* ============================================================
  *  ADMIN: Manual weekly grid (Schedule)
- *  GET /api/v1/schedule/grid
- *  POST /api/v1/schedule/grid
- *  PUT /api/v1/schedule/grid/cell
  * ============================================================ */
 
-// GET לוח ידני
+// GET grid
 export const getManualSchedule = async (req, res) => {
   try {
     const { weekKey = "default" } = req.query;
@@ -156,7 +140,7 @@ export const getManualSchedule = async (req, res) => {
   }
 };
 
-// POST שמירת לוח מלא
+// POST full grid
 export const saveManualSchedule = async (req, res) => {
   try {
     const { weekKey = "default", grid } = req.body;
@@ -173,7 +157,7 @@ export const saveManualSchedule = async (req, res) => {
   }
 };
 
-// PUT שמירת תא בודד
+// PUT one cell
 export const updateCell = async (req, res) => {
   try {
     const { weekKey = "default", day, hour, studio, value } = req.body;
@@ -198,11 +182,7 @@ export const updateCell = async (req, res) => {
 
 /* ============================================================
  *  ADMIN: Sessions (materialize/list)
- *  POST /api/v1/schedule/materialize?from&to
- *  GET  /api/v1/schedule/sessions?from&to&studio&workshopId
  * ============================================================ */
-
-// יוצר/מעדכן Sessions במסד על בסיס ה-occurrences (idempotent)
 export const materializeSessions = async (req, res) => {
   try {
     const { from, to } = req.query;
@@ -213,7 +193,6 @@ export const materializeSessions = async (req, res) => {
     let upserts = 0;
 
     for (const o of occ) {
-      // מפתח ייחודי לוגי: workshopId + studio + start
       await Session.findOneAndUpdate(
         { workshopId: o.workshopId, studio: o.studio, start: o.start },
         {
@@ -240,17 +219,17 @@ export const materializeSessions = async (req, res) => {
   }
 };
 
-// שליפה מהירה של Sessions מה-DB עם פילטרים
 export const listSessions = async (req, res) => {
   try {
     const { from, to, studio, workshopId } = req.query;
-
     const filter = {};
+
     if (from || to) {
       filter.start = {};
       if (from) filter.start.$gte = buildLocalDateTime(from, "00:00");
       if (to) filter.start.$lte = buildLocalDateTime(to, "23:59");
     }
+
     if (studio) filter.studio = studio;
     if (workshopId) filter.workshopId = workshopId;
 
@@ -261,3 +240,9 @@ export const listSessions = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+
+/* ============================================================
+ *  🔹 ALIASES for backwards compatibility
+ * ============================================================ */
+export const getGrid = getManualSchedule;
+export const saveGrid = saveManualSchedule;

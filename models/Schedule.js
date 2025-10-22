@@ -10,7 +10,7 @@ const { Schema } = mongoose;
 const ScheduleSchema = new Schema(
   {
     weekKey: { type: String, default: "default", index: true },
-    grid: { type: Schema.Types.Mixed, default: {} },
+    grid: { type: Object, required: true },
     updatedBy: { type: String, default: null },
   },
   { timestamps: true }

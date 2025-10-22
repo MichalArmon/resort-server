@@ -1,14 +1,14 @@
 import express from "express";
 import {
-  // אדמין – לוח שבועי (grid)
-  getManualSchedule, // ← יהיה getGrid
-  saveManualSchedule, // ← יהיה saveGrid
+  // 🔹 אדמין – לוח שבועי (Grid)
+  getGrid, // גרסה חדשה של getManualSchedule
+  saveGrid, // גרסה חדשה של saveManualSchedule
   updateCell,
 
-  // אורחים – לוח אמיתי לפי תאריכים
+  // 🔹 אורחים – לוח אמיתי לפי תאריכים
   getSchedule,
 
-  // אופציונלי: יצירת Sessions למסד (אם רוצים לשמור אותם)
+  // 🔹 אופציונלי – Sessions אמיתיים למסד
   materializeSessions,
   listSessions,
 } from "../controllers/scheduleController.js";
@@ -20,33 +20,33 @@ const router = express.Router();
  * ===================================================== */
 /**
  * GET /api/v1/schedule?from=2025-10-20&to=2025-10-26
- * מחזיר [{ date, hour, workshopTitle, studio, start, end, ... }]
+ * מחזיר מערך של שיעורים בפועל (sessions)
  */
 router.get("/", getSchedule);
 
 /* =====================================================
- *  🔹 אדמין: גריד שבועי (ניהול ידני)
+ *  🔹 אדמין: לוח שבועי (Grid)
  * ===================================================== */
 /**
  * GET /api/v1/schedule/grid
- * מחזיר את לוח השבועי לשימוש פנימי באדמין
+ * מחזיר את הגריד השבועי (לוח עריכה)
  */
-router.get("/grid", getManualSchedule);
+router.get("/grid", getGrid);
 
 /**
  * POST /api/v1/schedule/grid
- * שומר את הגריד השבועי (כולו)
+ * שומר את כל הגריד השבועי
  */
-router.post("/grid", saveManualSchedule);
+router.post("/grid", saveGrid);
 
 /**
  * PUT /api/v1/schedule/grid/cell
- * עדכון תא בודד (לא חובה – אפשר למחוק אם לא משתמשים בזה)
+ * עדכון תא בודד בתוך הגריד
  */
 router.put("/grid/cell", updateCell);
 
 /* =====================================================
- *  🔹 אופציונלי: Sessions אמיתיים (שמירה למסד)
+ *  🔹 אופציונלי: יצירת Sessions אמיתיים ממידע גריד
  * ===================================================== */
 router.post("/materialize", materializeSessions);
 router.get("/sessions", listSessions);
