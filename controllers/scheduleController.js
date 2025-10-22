@@ -81,10 +81,8 @@ function toLocalKeys(date) {
  * משמש לאכלוס ראשוני של הלוח הידני.
  */
 async function buildDefaultGridFromRules() {
-  // טוען את כל הכללים הפעילים
-  const rules = await RecurringRule.find({ isActive: true })
-    .populate("workshopId")
-    .lean();
+  // 🎯 תיקון: הסרת הפילטר { isActive: true } כדי לוודא שכל ה-Rules נשלפים
+  const rules = await RecurringRule.find({}).populate("workshopId").lean();
   const defaultGrid = {};
 
   for (const rule of rules) {
@@ -101,18 +99,25 @@ async function buildDefaultGridFromRules() {
     const hourKey = `${String(h).padStart(2, "0")}:00`;
 
     const workshopId = rule.workshopId?._id || rule.workshopId;
-    const studio = rule.studio || "Unassigned";
+    const studio = rule.studio || "Studio A"; // ברירת מחדל ל-Studio A
 
     if (!workshopId) continue; // עוברים על ימי השבוע של הכלל (BYDAY)
 
-    const bydays = opts.byweekday
-      ?.map((dayNum) =>
-        Object.keys(DAY_MAP).find((key) => DAY_MAP[key] === dayNum)
-      )
+    const rruleDays = Array.isArray(opts.byweekday) ? opts.byweekday : [];
+
+    const bydays = rruleDays
+      .map((rruleDay) => {
+        // המרה מאינדקס RRule (0=Mon, 6=Sun) לאינדקס JS (0=Sun, 1=Mon)
+        const jsIndex = rruleDay.weekday === 6 ? 0 : rruleDay.weekday + 1;
+        return Object.keys(DAY_MAP).find((key) => DAY_MAP[key] === jsIndex);
+      })
       .filter((d) => d);
 
     // 🎯 DEBUGGING: בודק אם ימי השבוע זוהו נכון
-    console.log(`[GRID BUILD] Rule ${rule._id} parsed bydays:`, bydays);
+    console.log(
+      `[GRID BUILD] Rule ${rule._id} parsed bydays (mapped):`,
+      bydays
+    );
 
     for (const dayKey of bydays || []) {
       defaultGrid[dayKey] = defaultGrid[dayKey] || {};
@@ -121,7 +126,9 @@ async function buildDefaultGridFromRules() {
       defaultGrid[dayKey][hourKey][studio] = workshopId;
 
       // 🎯 DEBUGGING: בודק איזה תא נוסף לגריד
-      console.log(`[GRID BUILD] Adding: ${dayKey}, ${hourKey}, ${studio}`);
+      console.log(
+        `[GRID BUILD] Adding: ${dayKey}, ${hourKey}, ${studio}. Workshop ID: ${workshopId}`
+      );
     }
   }
   return defaultGrid;
