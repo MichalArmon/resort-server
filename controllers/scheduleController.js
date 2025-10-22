@@ -74,7 +74,7 @@ function toLocalKeys(date) {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
     hourKey: `${String(parts.hour).padStart(2, "0")}:${String(
       parts.minute
-    ).padStart(2, "0")}`, // ⬅️ שמירת דקות
+    ).padStart(2, "0")}`,
   };
 }
 
@@ -84,7 +84,9 @@ function toLocalKeys(date) {
  */
 async function buildDefaultGridFromRules() {
   // טוען את כל הכללים הפעילים
-  const rules = await RecurringRule.find({}).populate("workshopId").lean();
+  const rules = await RecurringRule.find({ isActive: true })
+    .populate("workshopId")
+    .lean();
   const defaultGrid = {};
 
   for (const rule of rules) {
@@ -95,11 +97,12 @@ async function buildDefaultGridFromRules() {
       continue;
     }
 
-    // 🎯 תיקון קריטי: שמירת שעת ההתחלה המלאה (כולל דקות)
+    // 🔥🔥 התיקון הקריטי: משתמשים בשעת ההתחלה המלאה (HH:MM) מה-DB כמפתח
     const hourKey = rule.startTime || "00:00";
+    // ⬅️ אם ה-DB שומר "18:30", hourKey יהיה "18:30". זה יתאים ל-Frontend.
 
     const workshopId = rule.workshopId?._id || rule.workshopId;
-    const studio = rule.studio || "Studio A"; // ברירת מחדל ל-Studio A
+    const studio = rule.studio || "Studio A";
 
     if (!workshopId) continue; // עוברים על ימי השבוע של הכלל (BYDAY)
 
