@@ -72,7 +72,9 @@ function toLocalKeys(date) {
   );
   return {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
-    hourKey: `${String(parts.hour).padStart(2, "0")}:00`,
+    hourKey: `${String(parts.hour).padStart(2, "0")}:${String(
+      parts.minute
+    ).padStart(2, "0")}`, // ⬅️ שמירת דקות
   };
 }
 
@@ -81,7 +83,7 @@ function toLocalKeys(date) {
  * משמש לאכלוס ראשוני של הלוח הידני.
  */
 async function buildDefaultGridFromRules() {
-  // 🎯 תיקון: הסרת הפילטר { isActive: true } כדי לוודא שכל ה-Rules נשלפים
+  // טוען את כל הכללים הפעילים
   const rules = await RecurringRule.find({}).populate("workshopId").lean();
   const defaultGrid = {};
 
@@ -93,10 +95,8 @@ async function buildDefaultGridFromRules() {
       continue;
     }
 
-    // 🎯 תיקון: פורמט שעה HH:00 מה-startTime
-    const rawHourKey = rule.startTime || "00:00";
-    const [h] = rawHourKey.split(":");
-    const hourKey = `${String(h).padStart(2, "0")}:00`;
+    // 🎯 תיקון קריטי: שמירת שעת ההתחלה המלאה (כולל דקות)
+    const hourKey = rule.startTime || "00:00";
 
     const workshopId = rule.workshopId?._id || rule.workshopId;
     const studio = rule.studio || "Studio A"; // ברירת מחדל ל-Studio A
@@ -113,22 +113,11 @@ async function buildDefaultGridFromRules() {
       })
       .filter((d) => d);
 
-    // 🎯 DEBUGGING: בודק אם ימי השבוע זוהו נכון
-    console.log(
-      `[GRID BUILD] Rule ${rule._id} parsed bydays (mapped):`,
-      bydays
-    );
-
     for (const dayKey of bydays || []) {
       defaultGrid[dayKey] = defaultGrid[dayKey] || {};
       defaultGrid[dayKey][hourKey] = defaultGrid[dayKey][hourKey] || {}; // מכניסים את ה-workshopId לסטודיו הרלוונטי
 
       defaultGrid[dayKey][hourKey][studio] = workshopId;
-
-      // 🎯 DEBUGGING: בודק איזה תא נוסף לגריד
-      console.log(
-        `[GRID BUILD] Adding: ${dayKey}, ${hourKey}, ${studio}. Workshop ID: ${workshopId}`
-      );
     }
   }
   return defaultGrid;
