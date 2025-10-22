@@ -13,7 +13,7 @@ const TYPE_TO_MODEL = {
 
 const PriceBreakdownSchema = new Schema(
   {
-    base: { type: Number, default: 0 }, // מחיר לפני הנחות/מסים
+    base: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     tax: { type: Number, default: 0 },
     fees: { type: Number, default: 0 },
@@ -75,7 +75,7 @@ const BookingSchema = new Schema(
     /** מספר הזמנה ידידותי וייחודי */
     bookingNumber: {
       type: String,
-      unique: true,
+      // ⚠️ הורדנו unique: true כדי לא להכפיל אינדקס
       required: true,
       trim: true,
     },
@@ -112,10 +112,23 @@ const BookingSchema = new Schema(
 );
 
 /* אינדקסים שימושיים */
-BookingSchema.index({ bookingNumber: 1 }, { unique: true });
-BookingSchema.index({ type: 1, itemId: 1, sessionId: 1, status: 1 });
-BookingSchema.index({ type: 1, itemId: 1, checkInDate: 1, checkOutDate: 1 }); // לחדרים
-BookingSchema.index({ "guestInfo.email": 1, createdAt: -1 });
+// נשאיר הגדרה אחת ייחודית ומרוכזת כאן:
+BookingSchema.index(
+  { bookingNumber: 1 },
+  { unique: true, name: "uniq_bookingNumber" }
+);
+BookingSchema.index(
+  { type: 1, itemId: 1, sessionId: 1, status: 1 },
+  { name: "by_type_item_session_status" }
+);
+BookingSchema.index(
+  { type: 1, itemId: 1, checkInDate: 1, checkOutDate: 1 },
+  { name: "by_room_dates" }
+);
+BookingSchema.index(
+  { "guestInfo.email": 1, createdAt: -1 },
+  { name: "by_guest_email_created" }
+);
 
 /* ===== Hooks & Validation ===== */
 
@@ -129,7 +142,6 @@ BookingSchema.pre("validate", function (next) {
 
 /** בודק שדות חובה בהתאם לסוג ההזמנה */
 BookingSchema.pre("validate", function (next) {
-  // חדרים: חובה תאריכי checkIn/out
   if (this.type === "room") {
     if (!this.checkInDate || !this.checkOutDate) {
       return next(
@@ -137,7 +149,6 @@ BookingSchema.pre("validate", function (next) {
       );
     }
   } else {
-    // לא חדרים: חובה תאריך נקודתי או sessionId (לסדנאות)
     if (this.type === "workshop") {
       if (!this.sessionId) {
         return next(new Error("sessionId is required for workshop bookings"));

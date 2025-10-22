@@ -1,4 +1,7 @@
-// 📁 server.js
+// ✅ 0) קובע אזור זמן *לפני כל import*
+// זה פותר היסטים בתאריכים/שעות בכל הקוד (RRULE, Date וכו').
+process.env.TZ = "Asia/Jerusalem";
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -11,7 +14,7 @@ import logger from "./middlewares/logger.js"; // אם קיים
 import serverLogger from "./middlewares/loggerService.js"; // אם קיים
 
 // ===== ראוטרים =====
-import router from "./router/router.js";
+import router from "./router/router.js"; // ראוטר כללי תחת /api/v1 (לשים אחרון בבלוק של /api/v1)
 import bookingRoutes from "./router/bookingRoutes.js";
 import authRoutes from "./router/authRoutes.js";
 import retreatRoutes from "./router/retreatsRoutes.js";
@@ -21,7 +24,6 @@ import workshopsRoutes from "./router/workshopsRoutes.js";
 import treatmentsRoutes from "./router/treatmentsRoutes.js";
 import recurringRulesRoutes from "./router/recurringRulesRoutes.js";
 import scheduleRoutes from "./router/scheduleRoutes.js";
-import manualScheduleRoutes from "./router/manualScheduleRoutes.js";
 
 // (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
 import "./models/User.js";
@@ -58,15 +60,13 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 204,
 };
-
-// ✅ זה מספיק — ה-cors מטפל גם ב-OPTIONS בלי רוט מיוחד
-app.use(cors(corsOptions));
+app.use(cors(corsOptions)); // ✅ לפני הראוטים
 
 /* ============================================================
  *  Middlewares
  * ============================================================ */
 app.disable("x-powered-by");
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "2mb" })); // ✅ לפני הראוטים
 if (typeof serverLogger === "function") app.use(serverLogger);
 if (typeof logger === "function") app.use(logger);
 app.use(express.static("./public"));
@@ -80,21 +80,22 @@ app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 /* ============================================================
  *  Routes (/api/v1)
+ *  סדר חשוב:
+ *  1) ראוטים ספציפיים (schedule, recurring-rules, workshops וכו')
+ *  2) *אחרון* – ה"router" הכללי תחת /api/v1 כדי שלא יבלע ראוטים ספציפיים
  * ============================================================ */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/retreats", retreatRoutes);
-// אליאס ישן "retret" אם קיימות קריאות ישנות
-app.use("/api/v1/retret", retreatRoutes);
+app.use("/api/v1/retreat", retreatRoutes); // אליאס ישן "retret" אם יש קריאות ישנות
 app.use("/api/v1/rooms", roomRoutes);
 app.use("/api/v1/uploads", uploadsRoutes);
 app.use("/api/v1/workshops", workshopsRoutes);
 app.use("/api/v1/treatments", treatmentsRoutes);
 app.use("/api/v1/recurring-rules", recurringRulesRoutes);
 app.use("/api/v1/schedule", scheduleRoutes);
-app.use("/api/v1/schedule", manualScheduleRoutes);
 
-// ראוטים כלליים תחת /api/v1
+// ✅ חשוב: הראוטר הכללי תחת /api/v1 חייב להגיע *אחרי* כל הספציפיים
 app.use("/api/v1", router);
 
 /* ============================================================
