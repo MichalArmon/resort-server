@@ -1,4 +1,4 @@
-// 📘 controllers/scheduleController.js
+// 📘 controllers/scheduleController.js (קוד מלא ומתוקן)
 // Unified Schedule Controller
 // כולל:
 //   - לוח אמיתי לאורחים (RRULE occurrences + Manual Grid)
@@ -74,7 +74,7 @@ function toLocalKeys(date) {
 async function buildGridOccurrences(from, to, weekKey = "default") {
   const fromDate = buildLocalDateTime(from, "00:00");
   const toDate = buildLocalDateTime(to, "23:59");
-  const rows = [];
+  const rows = []; // 🎯 תיקון: הסרת populate שהיה גורם לשגיאת 500
 
   const scheduleDoc = await Schedule.findOne({ weekKey });
   const grid = scheduleDoc?.grid || {};
@@ -245,7 +245,6 @@ async function buildOccurrences(from, to) {
  * GET /api/v1/schedule?from=YYYY-MM-DD&to=YYYY-MM-DD
  */
 export const getSchedule = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { from, to } = req.query;
     if (!from || !to)
@@ -269,7 +268,6 @@ export const getSchedule = async (req, res) => {
  * GET /api/v1/schedule/grid
  */
 export const getManualSchedule = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { weekKey = "default" } = req.query;
     const doc = await Schedule.findOne({ weekKey });
@@ -283,7 +281,6 @@ export const getManualSchedule = async (req, res) => {
  * POST /api/v1/schedule/grid
  */
 export const saveManualSchedule = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { weekKey = "default", grid } = req.body;
     if (!grid) return res.status(400).json({ error: "Missing grid" });
@@ -303,7 +300,6 @@ export const saveManualSchedule = async (req, res) => {
  * PUT /api/v1/schedule/grid/cell
  */
 export const updateCell = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { weekKey = "default", day, hour, studio, value } = req.body;
     if (!day || !hour || !studio)
@@ -327,7 +323,6 @@ export const updateCell = async (req, res) => {
  * DELETE /api/v1/schedule/grid
  */
 export const deleteManualSchedule = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { weekKey = "default" } = req.query;
     await Schedule.findOneAndDelete({ weekKey });
@@ -339,14 +334,13 @@ export const deleteManualSchedule = async (req, res) => {
 };
 
 // ============================================================
-// ADMIN (הקוד היה מקוטע כאן)
+// ADMIN: Sessions (Generate / Read / Delete)
 // ============================================================
 
 /**
  * POST /api/v1/schedule/materialize?from&to
  */
 export const materializeSessions = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { from, to } = req.query;
     if (!from || !to)
@@ -386,7 +380,6 @@ export const materializeSessions = async (req, res) => {
  * GET /api/v1/schedule/sessions
  */
 export const listSessions = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { from, to, studio, workshopId } = req.query;
     const filter = {};
@@ -411,7 +404,6 @@ export const listSessions = async (req, res) => {
  * DELETE /api/v1/schedule/sessions
  */
 export const deleteSessions = async (req, res) => {
-  // ⬅️ EXPORT
   try {
     const { from, to, studio, workshopId } = req.query;
     const filter = {};

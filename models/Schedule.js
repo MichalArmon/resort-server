@@ -5,7 +5,6 @@ const { Schema } = mongoose;
 /**
  * שומרת את כל הגריד במסמך אחד (או לפי weekKey אם תרצי כמה תבניות)
  * grid = אובייקט { [day]: { [hour]: { studio1: "...", studio2: "..." } } }
- * איפשרנו Object כדי שתוכלי לשנות מבנה בקלות.
  */
 const ScheduleSchema = new Schema(
   {
@@ -16,5 +15,5 @@ const ScheduleSchema = new Schema(
   { timestamps: true }
 );
 
-// הייצוא עם export default הוא הקריטי לפתרון שגיאת ה-SyntaxError
+// זהו הייצוא הנכון שקובץ ה-controller מצפה לו
 export default mongoose.model("Schedule", ScheduleSchema);
