@@ -1,4 +1,4 @@
-// 📘 controllers/scheduleController.js (קוד מלא ומתוקן)
+// 📘 controllers/scheduleController.js
 // Unified Schedule Controller
 // כולל:
 //   - לוח אמיתי לאורחים (RRULE occurrences + Manual Grid)
@@ -37,9 +37,20 @@ const DAY_MAP = {
 
 /**
  * בונה אובייקט Date מקומי (ב-Asia/Jerusalem) מתוך תאריך (YYYY-MM-DD) ושעה (HH:MM).
+ * מטפל במקרה שהתאריך מגיע כאובייקט Date מהמסד.
+ * @param {string | Date} dateKey - תאריך בפורמט YYYY-MM-DD או אובייקט Date.
  */
 function buildLocalDateTime(dateKey, timeKey = "00:00") {
-  const [y, m, d] = dateKey.split("-").map(Number);
+  // 🎯 תיקון: הופך כל Date object למחרוזת ISO כדי למנוע "split is not a function"
+  let isoDateKey = dateKey;
+  if (dateKey instanceof Date) {
+    isoDateKey = dateKey.toISOString().slice(0, 10);
+  } else if (typeof dateKey !== "string" || !dateKey) {
+    console.error("Invalid dateKey passed to buildLocalDateTime:", dateKey);
+    return new Date(NaN);
+  }
+
+  const [y, m, d] = isoDateKey.split("-").map(Number);
   const [h, min] = timeKey.split(":").map(Number);
   const utcDate = new Date(Date.UTC(y, m - 1, d, h, min));
   return utcDate;
@@ -74,7 +85,7 @@ function toLocalKeys(date) {
 async function buildGridOccurrences(from, to, weekKey = "default") {
   const fromDate = buildLocalDateTime(from, "00:00");
   const toDate = buildLocalDateTime(to, "23:59");
-  const rows = []; // 🎯 תיקון: הסרת populate שהיה גורם לשגיאת 500
+  const rows = []; // 🎯 שליפה ללא populate, כיוון ש-Grid הוא שדה Object/Mixed ו-populate קורס
 
   const scheduleDoc = await Schedule.findOne({ weekKey });
   const grid = scheduleDoc?.grid || {};
@@ -161,6 +172,7 @@ async function buildRRuleOccurrences(from, to) {
 
     let dtstart = new Date();
     if (rule.effectiveFrom) {
+      // rule.effectiveFrom הוא Date מהמסד, buildLocalDateTime יטפל בו
       const maybe = buildLocalDateTime(
         rule.effectiveFrom,
         rule.startTime || "00:00"
@@ -178,6 +190,7 @@ async function buildRRuleOccurrences(from, to) {
     }
 
     if (rule.effectiveTo) {
+      // rule.effectiveTo הוא Date מהמסד, buildLocalDateTime יטפל בו
       const until = buildLocalDateTime(rule.effectiveTo, "23:59");
       until.setSeconds(59, 999);
       opts.until = until;
