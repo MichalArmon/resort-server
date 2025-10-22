@@ -95,26 +95,33 @@ async function buildDefaultGridFromRules() {
       continue;
     }
 
-    const hourKey = rule.startTime || "00:00";
+    // 🎯 תיקון: פורמט שעה HH:00 מה-startTime
+    const rawHourKey = rule.startTime || "00:00";
+    const [h] = rawHourKey.split(":");
+    const hourKey = `${String(h).padStart(2, "0")}:00`;
+
     const workshopId = rule.workshopId?._id || rule.workshopId;
     const studio = rule.studio || "Unassigned";
 
-    if (!workshopId) continue;
+    if (!workshopId) continue; // עוברים על ימי השבוע של הכלל (BYDAY)
 
-    // עוברים על ימי השבוע של הכלל (BYDAY)
-    // RRule.parseString מחזיר ימי שבוע כאינדקסים (0-6)
     const bydays = opts.byweekday
       ?.map((dayNum) =>
         Object.keys(DAY_MAP).find((key) => DAY_MAP[key] === dayNum)
       )
       .filter((d) => d);
 
+    // 🎯 DEBUGGING: בודק אם ימי השבוע זוהו נכון
+    console.log(`[GRID BUILD] Rule ${rule._id} parsed bydays:`, bydays);
+
     for (const dayKey of bydays || []) {
       defaultGrid[dayKey] = defaultGrid[dayKey] || {};
-      defaultGrid[dayKey][hourKey] = defaultGrid[dayKey][hourKey] || {};
+      defaultGrid[dayKey][hourKey] = defaultGrid[dayKey][hourKey] || {}; // מכניסים את ה-workshopId לסטודיו הרלוונטי
 
-      // מכניסים את ה-workshopId לסטודיו הרלוונטי
       defaultGrid[dayKey][hourKey][studio] = workshopId;
+
+      // 🎯 DEBUGGING: בודק איזה תא נוסף לגריד
+      console.log(`[GRID BUILD] Adding: ${dayKey}, ${hourKey}, ${studio}`);
     }
   }
   return defaultGrid;
@@ -127,7 +134,7 @@ async function buildDefaultGridFromRules() {
 async function buildGridOccurrences(from, to, weekKey = "default") {
   const fromDate = buildLocalDateTime(from, "00:00");
   const toDate = buildLocalDateTime(to, "23:59");
-  const rows = []; // 🎯 שליפה ללא populate, כיוון ש-Grid הוא שדה Object/Mixed ו-populate קורס
+  const rows = [];
 
   const scheduleDoc = await Schedule.findOne({ weekKey });
   const grid = scheduleDoc?.grid || {};
@@ -309,7 +316,7 @@ export const getSchedule = async (req, res) => {
     res.json(rows);
   } catch (err) {
     console.error("getSchedule error:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
@@ -323,22 +330,23 @@ export const getSchedule = async (req, res) => {
  */
 export const getManualSchedule = async (req, res) => {
   try {
-    const { weekKey = "default" } = req.query;
-    // 1. נסה לשלוף Grid קיים
+    const { weekKey = "default" } = req.query; // 1. נסה לשלוף Grid קיים
     let doc = await Schedule.findOne({ weekKey }); // 2. אם ה-Grid קיים במסד (ולא ריק), מחזירים אותו
     if (doc?.grid && Object.keys(doc.grid).length > 0) {
       return res.json(doc.grid);
-    } // 3. אם לא קיים, בונים Grid ברירת מחדל מתוך ה-RecurringRules
-    const defaultGrid = await buildDefaultGridFromRules(); // 4. שומרים את ה-Grid החדש במסד כדי שלא יחושב שוב
+    }
+    // 3. אם לא קיים, בונים Grid ברירת מחדל מתוך ה-RecurringRules
+    const defaultGrid = await buildDefaultGridFromRules();
+    // 4. שומרים את ה-Grid החדש במסד כדי שלא יחושב שוב
     const newDoc = await Schedule.findOneAndUpdate(
       { weekKey },
       { grid: defaultGrid },
       { upsert: true, new: true }
     );
-    res.json(newDoc.grid); // מחזירים את הגריד המאוכלס
+    return res.json(newDoc.grid); // מחזירים את הגריד המאוכלס
   } catch (err) {
     console.error("getManualSchedule error:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 };
 
