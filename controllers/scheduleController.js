@@ -2,7 +2,7 @@
 // Unified Schedule Controller
 // כולל:
 //   - לוח אמיתי לאורחים (RRULE occurrences + Manual Grid)
-//   - לוח ידני לאדמין (Grid CRUD מלא)
+//   - לוח ידני לאדמין (Grid CRUD מלא + אכלוס אוטומטי מ-RULES)
 //   - ניהול Sessions (חישוב, יצירה, שליפה)
 
 // ============================================================
@@ -37,8 +37,6 @@ const DAY_MAP = {
 
 /**
  * בונה אובייקט Date מקומי (ב-Asia/Jerusalem) מתוך תאריך (YYYY-MM-DD) ושעה (HH:MM).
- * מטפל במקרה שהתאריך מגיע כאובייקט Date מהמסד.
- * @param {string | Date} dateKey - תאריך בפורמט YYYY-MM-DD או אובייקט Date.
  */
 function buildLocalDateTime(dateKey, timeKey = "00:00") {
   // 🎯 תיקון: הופך כל Date object למחרוזת ISO כדי למנוע "split is not a function"
@@ -76,6 +74,50 @@ function toLocalKeys(date) {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
     hourKey: `${String(parts.hour).padStart(2, "0")}:00`,
   };
+}
+
+/**
+ * NEW: בונה גריד (תבנית שבועית) מתוך כל חוקי ה-RecurringRule הקיימים.
+ * משמש לאכלוס ראשוני של הלוח הידני.
+ */
+async function buildDefaultGridFromRules() {
+  // טוען את כל הכללים הפעילים
+  const rules = await RecurringRule.find({ isActive: true })
+    .populate("workshopId")
+    .lean();
+  const defaultGrid = {};
+
+  for (const rule of rules) {
+    let opts;
+    try {
+      opts = RRule.parseString(rule.rrule);
+    } catch {
+      continue;
+    }
+
+    const hourKey = rule.startTime || "00:00";
+    const workshopId = rule.workshopId?._id || rule.workshopId;
+    const studio = rule.studio || "Unassigned";
+
+    if (!workshopId) continue;
+
+    // עוברים על ימי השבוע של הכלל (BYDAY)
+    // RRule.parseString מחזיר ימי שבוע כאינדקסים (0-6)
+    const bydays = opts.byweekday
+      ?.map((dayNum) =>
+        Object.keys(DAY_MAP).find((key) => DAY_MAP[key] === dayNum)
+      )
+      .filter((d) => d);
+
+    for (const dayKey of bydays || []) {
+      defaultGrid[dayKey] = defaultGrid[dayKey] || {};
+      defaultGrid[dayKey][hourKey] = defaultGrid[dayKey][hourKey] || {};
+
+      // מכניסים את ה-workshopId לסטודיו הרלוונטי
+      defaultGrid[dayKey][hourKey][studio] = workshopId;
+    }
+  }
+  return defaultGrid;
 }
 
 // ============================================================
@@ -172,7 +214,6 @@ async function buildRRuleOccurrences(from, to) {
 
     let dtstart = new Date();
     if (rule.effectiveFrom) {
-      // rule.effectiveFrom הוא Date מהמסד, buildLocalDateTime יטפל בו
       const maybe = buildLocalDateTime(
         rule.effectiveFrom,
         rule.startTime || "00:00"
@@ -190,7 +231,6 @@ async function buildRRuleOccurrences(from, to) {
     }
 
     if (rule.effectiveTo) {
-      // rule.effectiveTo הוא Date מהמסד, buildLocalDateTime יטפל בו
       const until = buildLocalDateTime(rule.effectiveTo, "23:59");
       until.setSeconds(59, 999);
       opts.until = until;
@@ -279,13 +319,25 @@ export const getSchedule = async (req, res) => {
 
 /**
  * GET /api/v1/schedule/grid
+ * טוען לוח ידני. אם לא קיים - בונה אותו מחוקים קיימים.
  */
 export const getManualSchedule = async (req, res) => {
   try {
     const { weekKey = "default" } = req.query;
-    const doc = await Schedule.findOne({ weekKey });
-    res.json(doc?.grid || {});
+    // 1. נסה לשלוף Grid קיים
+    let doc = await Schedule.findOne({ weekKey }); // 2. אם ה-Grid קיים במסד (ולא ריק), מחזירים אותו
+    if (doc?.grid && Object.keys(doc.grid).length > 0) {
+      return res.json(doc.grid);
+    } // 3. אם לא קיים, בונים Grid ברירת מחדל מתוך ה-RecurringRules
+    const defaultGrid = await buildDefaultGridFromRules(); // 4. שומרים את ה-Grid החדש במסד כדי שלא יחושב שוב
+    const newDoc = await Schedule.findOneAndUpdate(
+      { weekKey },
+      { grid: defaultGrid },
+      { upsert: true, new: true }
+    );
+    res.json(newDoc.grid); // מחזירים את הגריד המאוכלס
   } catch (err) {
+    console.error("getManualSchedule error:", err);
     res.status(500).json({ error: err.message });
   }
 };
