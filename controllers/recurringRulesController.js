@@ -3,7 +3,7 @@ import pkg from "rrule";
 const { RRule } = pkg;
 
 /* ===========================================================
-   CREATE — עם בדיקת חפיפה
+   CREATE — עם בדיקת חפיפה (כולל טיפול בשגיאות RRule)
    =========================================================== */
 export const createRecurringRule = async (req, res) => {
   try {
@@ -11,11 +11,19 @@ export const createRecurringRule = async (req, res) => {
       workshopId,
       studio,
       startTime,
-      durationMin,
+      durationMin = 60,
       rrule,
       effectiveFrom,
       effectiveTo,
     } = req.body;
+
+    // ✅ בדיקה בסיסית לשדות חובה
+    if (!workshopId || !studio || !startTime || !rrule || !effectiveFrom) {
+      return res.status(400).json({
+        error:
+          "Missing required fields (workshopId, studio, startTime, rrule, effectiveFrom)",
+      });
+    }
 
     // חישוב זמן סיום
     const [h, m] = startTime.split(":").map(Number);
@@ -31,24 +39,38 @@ export const createRecurringRule = async (req, res) => {
       _id: { $ne: req.params?.id || null },
     });
 
-    // נגדיר את הכלל החדש
-    const newRule = new RRule({
-      ...RRule.parseString(rrule),
-      dtstart: new Date(effectiveFrom),
-    });
-
-    // נבדוק חפיפה
-    for (const rule of existing) {
-      const other = new RRule({
-        ...RRule.parseString(rule.rrule),
-        dtstart: new Date(rule.effectiveFrom),
+    // ננסה לפרש את הכלל החדש בצורה בטוחה
+    let newRule;
+    try {
+      newRule = new RRule({
+        ...RRule.parseString(rrule),
+        dtstart: new Date(effectiveFrom),
       });
+    } catch (e) {
+      console.warn("⚠️ Invalid RRule syntax:", rrule);
+      return res.status(400).json({ error: "Invalid recurrence rule format" });
+    }
+
+    // נבדוק חפיפה עם כל כלל קיים
+    for (const rule of existing) {
+      let other;
+      try {
+        other = new RRule({
+          ...RRule.parseString(rule.rrule),
+          dtstart: new Date(rule.effectiveFrom),
+        });
+      } catch (e) {
+        console.warn(
+          `⚠️ Skipping invalid existing rule (${rule._id}):`,
+          e.message
+        );
+        continue;
+      }
 
       // בדיקה אם יש ימים חופפים
       const sameDays = other.origOptions.byweekday?.some((d) =>
         newRule.origOptions.byweekday?.includes(d)
       );
-
       if (!sameDays) continue;
 
       // נחשב זמן סיום של החוק הקיים
@@ -73,11 +95,15 @@ export const createRecurringRule = async (req, res) => {
       }
     }
 
-    // אין חפיפה — ניצור
-    const rule = await RecurringRule.create(req.body);
-    res.status(201).json(rule);
+    // ✅ אין חפיפה — ניצור את הכלל החדש
+    const newDoc = await RecurringRule.create(req.body);
+    console.log(`✅ New recurring rule created (${newDoc._id}) for ${studio}`);
+    res.status(201).json(newDoc);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("❌ CREATE RULE ERROR:", err);
+    res
+      .status(400)
+      .json({ error: err.message || "Failed to create recurring rule" });
   }
 };
 
@@ -116,10 +142,93 @@ export const getRecurringRuleById = async (req, res) => {
    =========================================================== */
 export const updateRecurringRule = async (req, res) => {
   try {
-    req.params.id && (req.body._id = req.params.id);
-    await createRecurringRule(req, res); // משתמשים באותה לוגיקה כמו CREATE
+    const {
+      studio,
+      startTime,
+      durationMin = 60,
+      rrule,
+      effectiveFrom,
+      effectiveTo,
+    } = req.body;
+
+    const ruleId = req.params.id;
+    if (!ruleId) {
+      return res.status(400).json({ error: "Missing rule ID for update" });
+    }
+
+    // חישוב זמן סיום
+    const [h, m] = startTime.split(":").map(Number);
+    const endTime = `${String(h + Math.floor((m + durationMin) / 60)).padStart(
+      2,
+      "0"
+    )}:${String((m + durationMin) % 60).padStart(2, "0")}`;
+
+    // נאתר חוקים קיימים באותו סטודיו (חוץ מהכלל הנוכחי)
+    const existing = await RecurringRule.find({
+      studio,
+      isActive: true,
+      _id: { $ne: ruleId },
+    });
+
+    let newRule;
+    try {
+      newRule = new RRule({
+        ...RRule.parseString(rrule),
+        dtstart: new Date(effectiveFrom),
+      });
+    } catch (e) {
+      return res.status(400).json({ error: "Invalid recurrence rule format" });
+    }
+
+    // בדיקת חפיפה
+    for (const rule of existing) {
+      let other;
+      try {
+        other = new RRule({
+          ...RRule.parseString(rule.rrule),
+          dtstart: new Date(rule.effectiveFrom),
+        });
+      } catch {
+        continue;
+      }
+
+      const sameDays = other.origOptions.byweekday?.some((d) =>
+        newRule.origOptions.byweekday?.includes(d)
+      );
+
+      if (!sameDays) continue;
+
+      const [h2, m2] = rule.startTime.split(":").map(Number);
+      const end2 = `${String(
+        h2 + Math.floor((m2 + rule.durationMin) / 60)
+      ).padStart(2, "0")}:${String((m2 + rule.durationMin) % 60).padStart(
+        2,
+        "0"
+      )}`;
+
+      const overlap =
+        !(endTime <= rule.startTime || end2 <= startTime) &&
+        (!effectiveTo ||
+          !rule.effectiveTo ||
+          new Date(effectiveFrom) <= rule.effectiveTo);
+
+      if (overlap) {
+        return res.status(400).json({
+          error: `⛔ A scheduling conflict was detected in ${studio} — another class occurs at the same time.`,
+        });
+      }
+    }
+
+    // ✅ אין חפיפה — נעדכן
+    const updated = await RecurringRule.findByIdAndUpdate(ruleId, req.body, {
+      new: true,
+    });
+    if (!updated) return res.status(404).json({ error: "Rule not found" });
+
+    res.json(updated);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    console.error("❌ UPDATE RULE ERROR:", err);
+    res.status(400).json({ error: err.message || "Failed to update rule" });
   }
 };
 

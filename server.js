@@ -24,6 +24,7 @@ import workshopsRoutes from "./router/workshopsRoutes.js";
 import treatmentsRoutes from "./router/treatmentsRoutes.js";
 import recurringRulesRoutes from "./router/recurringRulesRoutes.js";
 import scheduleRoutes from "./router/scheduleRoutes.js";
+import categoryRoutes from "./router/categoryRoutes.js";
 
 // (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
 import "./models/User.js";
@@ -85,6 +86,7 @@ app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
  *  2) *אחרון* – ה"router" הכללי תחת /api/v1 כדי שלא יבלע ראוטים ספציפיים
  * ============================================================ */
 app.use("/api/v1/auth", authRoutes);
+app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/retreats", retreatRoutes);
 app.use("/api/v1/retreat", retreatRoutes); // אליאס ישן "retret" אם יש קריאות ישנות

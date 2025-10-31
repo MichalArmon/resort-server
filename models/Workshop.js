@@ -21,10 +21,16 @@ const WorkshopSchema = new Schema(
       lowercase: true,
       trim: true,
     },
+    // קטגוריה ישנה (נשארת זמנית)
     category: {
       type: String,
       enum: ["movement", "meditation", "wellness", "creativity", "other"],
       default: "other",
+    },
+    // ✅ קטגוריה חדשה – הפניה למודל Category
+    categoryId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Category",
     },
     instructor: {
       type: String,
@@ -43,9 +49,9 @@ const WorkshopSchema = new Schema(
       type: String,
       trim: true,
     },
-    bullets: [String], // לדוגמה ["Opening circle", "Live DJ", "Integration stretch"]
-    hero: ImageSchema, // תמונת hero אחת
-    gallery: [ImageSchema], // אוסף תמונות
+    bullets: [String],
+    hero: ImageSchema,
+    gallery: [ImageSchema],
     price: {
       type: Number,
     },
