@@ -1,12 +1,79 @@
-// 📁 server/controllers/recurringRulesController.js
 import RecurringRule from "../models/RecurringRule.js";
-// ❌ הוסר: אין צורך ב-rrule בקונטרולר ה-CRUD
-// import pkg from "rrule";
-// const { RRule } = pkg;
+import pkg from "rrule";
+const { RRule } = pkg;
 
-/* ---------- CREATE ---------- */
+/* ===========================================================
+   CREATE — עם בדיקת חפיפה
+   =========================================================== */
 export const createRecurringRule = async (req, res) => {
   try {
+    const {
+      workshopId,
+      studio,
+      startTime,
+      durationMin,
+      rrule,
+      effectiveFrom,
+      effectiveTo,
+    } = req.body;
+
+    // חישוב זמן סיום
+    const [h, m] = startTime.split(":").map(Number);
+    const endTime = `${String(h + Math.floor((m + durationMin) / 60)).padStart(
+      2,
+      "0"
+    )}:${String((m + durationMin) % 60).padStart(2, "0")}`;
+
+    // נאתר חוקים קיימים באותו סטודיו
+    const existing = await RecurringRule.find({
+      studio,
+      isActive: true,
+      _id: { $ne: req.params?.id || null },
+    });
+
+    // נגדיר את הכלל החדש
+    const newRule = new RRule({
+      ...RRule.parseString(rrule),
+      dtstart: new Date(effectiveFrom),
+    });
+
+    // נבדוק חפיפה
+    for (const rule of existing) {
+      const other = new RRule({
+        ...RRule.parseString(rule.rrule),
+        dtstart: new Date(rule.effectiveFrom),
+      });
+
+      // בדיקה אם יש ימים חופפים
+      const sameDays = other.origOptions.byweekday?.some((d) =>
+        newRule.origOptions.byweekday?.includes(d)
+      );
+
+      if (!sameDays) continue;
+
+      // נחשב זמן סיום של החוק הקיים
+      const [h2, m2] = rule.startTime.split(":").map(Number);
+      const end2 = `${String(
+        h2 + Math.floor((m2 + rule.durationMin) / 60)
+      ).padStart(2, "0")}:${String((m2 + rule.durationMin) % 60).padStart(
+        2,
+        "0"
+      )}`;
+
+      const overlap =
+        !(endTime <= rule.startTime || end2 <= startTime) &&
+        (!effectiveTo ||
+          !rule.effectiveTo ||
+          new Date(effectiveFrom) <= rule.effectiveTo);
+
+      if (overlap) {
+        return res.status(400).json({
+          error: `⛔ כבר יש חוג באותה שעה ב-${studio} (יום חופף לפי הכללים)`,
+        });
+      }
+    }
+
+    // אין חפיפה — ניצור
     const rule = await RecurringRule.create(req.body);
     res.status(201).json(rule);
   } catch (err) {
@@ -14,7 +81,9 @@ export const createRecurringRule = async (req, res) => {
   }
 };
 
-/* ---------- READ (all for workshop) ---------- */
+/* ===========================================================
+   READ (all for workshop)
+   =========================================================== */
 export const getRecurringRules = async (req, res) => {
   try {
     const { workshopId } = req.query;
@@ -27,7 +96,9 @@ export const getRecurringRules = async (req, res) => {
   }
 };
 
-/* ---------- READ (single rule) ---------- */
+/* ===========================================================
+   READ (single)
+   =========================================================== */
 export const getRecurringRuleById = async (req, res) => {
   try {
     const rule = await RecurringRule.findById(req.params.id).populate(
@@ -40,24 +111,21 @@ export const getRecurringRuleById = async (req, res) => {
   }
 };
 
-// ❌ הוסר: הפונקציה generateSessions הוסרה לחלוטין.
-// החישוב מתבצע כעת רק על ידי buildOccurrences ב-scheduleController.js.
-
-/* ---------- UPDATE ---------- */
+/* ===========================================================
+   UPDATE — כולל בדיקה מחדש לחפיפה
+   =========================================================== */
 export const updateRecurringRule = async (req, res) => {
   try {
-    const rule = await RecurringRule.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-    res.json(rule);
+    req.params.id && (req.body._id = req.params.id);
+    await createRecurringRule(req, res); // משתמשים באותה לוגיקה כמו CREATE
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
 
-/* ---------- DELETE ---------- */
+/* ===========================================================
+   DELETE
+   =========================================================== */
 export const deleteRecurringRule = async (req, res) => {
   try {
     await RecurringRule.findByIdAndDelete(req.params.id);
