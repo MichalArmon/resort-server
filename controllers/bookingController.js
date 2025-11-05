@@ -1,6 +1,6 @@
 // 📁 server/controllers/bookingController.js
 import Booking from "../models/Booking.js";
-import RoomType from "../models/Room.js"; // המודל שמייצג סוג חדר (עם stock)
+import RoomType from "../models/RoomType.js"; // המודל שמייצג סוג חדר (עם stock)
 import Retreat from "../models/Retreat.js";
 import PricingRule from "../models/PricingRule.js"; // ✅ חישוב מחירים
 import Workshop from "../models/Workshop.js"; // ✅ סדנאות (sessions/capacity)

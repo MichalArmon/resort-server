@@ -1,7 +1,9 @@
-// server/controllers/roomsController.js
-import RoomType from "../models/Room.js";
+// 📁 server/controllers/roomsController.js
+import RoomType from "../models/RoomType.js";
 
-/* ---------- Utils ---------- */
+/* ============================================================
+   🧩 Helpers
+   ============================================================ */
 const slugify = (s = "") =>
   s
     .toString()
@@ -10,19 +12,15 @@ const slugify = (s = "") =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 
-// אם יש לך CLOUDINARY_CLOUD_NAME ב-.env, זה ישתמש בו; אחרת fallback לשם שהשתמשת בו בפרונט
 const CLD_NAME = process.env.CLOUDINARY_CLOUD_NAME || "dhje7hbxd";
 const cldUrlFromPublicId = (pid) =>
   pid
     ? `https://res.cloudinary.com/${CLD_NAME}/image/upload/f_auto,q_auto/${pid}`
     : null;
 
-/** קולט:
- *  - string (publicId)
- *  - { url, publicId, alt }
- *  - Cloudinary object { secure_url, public_id, ... }
- * ומחזיר אובייקט אחיד { url, publicId, alt, ... }
- */
+/* ============================================================
+   🖼️ Image Helpers
+   ============================================================ */
 const toImgObj = (x) => {
   if (!x) return null;
   if (typeof x === "string") {
@@ -31,8 +29,8 @@ const toImgObj = (x) => {
   const publicId = x.public_id || x.publicId || null;
   const url = x.secure_url || x.url || cldUrlFromPublicId(publicId);
   return {
-    url: url || null,
     publicId,
+    url: url || null,
     alt: x.alt || "",
     width: x.width,
     height: x.height,
@@ -45,7 +43,9 @@ const toImgArr = (val) => {
   return (Array.isArray(val) ? val : [val]).map(toImgObj).filter(Boolean);
 };
 
-/** מחזיר תצורה “ידידותית ל-UI” */
+/* ============================================================
+   🔄 Format for UI
+   ============================================================ */
 const toUI = (doc) => {
   const d = typeof doc.toObject === "function" ? doc.toObject() : doc;
   const slug = d.slug || slugify(d.title || "");
@@ -53,7 +53,7 @@ const toUI = (doc) => {
   const imgs = Array.isArray(d.images) ? d.images.map(toImgObj) : [];
 
   return {
-    // שדות בסיס
+    _id: d._id,
     slug,
     title: d.title,
     blurb: d.blurb || "",
@@ -66,24 +66,22 @@ const toUI = (doc) => {
     stock: d.stock ?? 0,
     active: d.active !== false,
 
-    // תמונות (גם עשיר וגם מקוצר ל-URL)
     hero: heroObj,
     images: imgs,
     heroUrl: heroObj?.url || null,
     imageUrls: imgs.map((i) => i?.url).filter(Boolean),
 
-    // תאימות למקומות שקוראים type/label
     type: slug,
     label: d.title,
-
-    raw: d, // לעזרה בדיבוג
   };
 };
 
-/* ---------- GET /api/v1/rooms/types ---------- */
+/* ============================================================
+   📜 GET — All room types
+   ============================================================ */
 export const getRoomTypes = async (_req, res) => {
   try {
-    const docs = await RoomType.find({ active: true }).lean();
+    const docs = await RoomType.find({}).lean();
     res.json(docs.map(toUI));
   } catch (e) {
     console.error("getRoomTypes error:", e);
@@ -91,10 +89,12 @@ export const getRoomTypes = async (_req, res) => {
   }
 };
 
-/* ---------- GET /api/v1/rooms/:type ---------- */
+/* ============================================================
+   📘 GET — By slug (for guests)
+   ============================================================ */
 export const getRoomByType = async (req, res) => {
   try {
-    const { type } = req.params; // slug
+    const { type } = req.params;
     if (!type) return res.status(400).json({ message: "type is required" });
 
     const rt = await RoomType.findOne({ slug: type, active: true });
@@ -107,8 +107,27 @@ export const getRoomByType = async (req, res) => {
   }
 };
 
-/* ---------- POST /api/v1/rooms/types ---------- */
-/* מקבל hero/images כמחרוזות publicId או כעצמים של Cloudinary/שלנו */
+/* ============================================================
+   📗 GET — By ID (for admin)
+   ============================================================ */
+export const getRoomTypeById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ message: "Missing ID" });
+
+    const room = await RoomType.findById(id);
+    if (!room) return res.status(404).json({ message: "Room not found" });
+
+    res.json(toUI(room));
+  } catch (e) {
+    console.error("getRoomTypeById error:", e);
+    res.status(500).json({ message: "Failed to fetch room by ID" });
+  }
+};
+
+/* ============================================================
+   ➕ POST — Create new room type
+   ============================================================ */
 export const createRoomType = async (req, res) => {
   try {
     const {
@@ -146,74 +165,71 @@ export const createRoomType = async (req, res) => {
     };
 
     const created = await RoomType.create(payload);
-    res.status(201).json(toUI(created)); // ← מחזיר אובייקט שטוח עם slug
+    res.status(201).json(toUI(created));
   } catch (e) {
     console.error("createRoomType error:", e);
     res.status(500).json({ message: "Failed to create room type" });
   }
 };
 
-/* ---------- PUT /api/v1/rooms/types/:slug ---------- */
-/* עדכון לפי slug קיים; אפשר גם לשנות slug (זהירות בשימוש) */
-export const updateRoomTypeBySlug = async (req, res) => {
+/* ============================================================
+   ✏️ PUT — Update by ID (for admin)
+   ============================================================ */
+export const updateRoomTypeById = async (req, res) => {
   try {
-    const { slug } = req.params;
-    const doc = await RoomType.findOne({ slug });
-    if (!doc) return res.status(404).json({ message: "Room type not found" });
+    const { id } = req.params;
+    const room = await RoomType.findById(id);
+    if (!room) return res.status(404).json({ message: "Room not found" });
 
-    const {
-      title,
-      blurb,
-      hero,
-      images,
-      features,
-      maxGuests,
-      sizeM2,
-      bedType,
-      priceBase,
-      currency,
-      stock,
-      active,
-      slug: nextSlug, // אם שולחים slug חדש
-    } = req.body;
+    const body = req.body;
 
-    if (title !== undefined) doc.title = title;
-    if (blurb !== undefined) doc.blurb = blurb;
-
-    if (hero !== undefined) doc.hero = toImgObj(hero);
-    if (images !== undefined) doc.images = toImgArr(images);
-    if (features !== undefined)
-      doc.features = Array.isArray(features) ? features : [];
-
-    if (maxGuests !== undefined) doc.maxGuests = maxGuests;
-    if (sizeM2 !== undefined) doc.sizeM2 = sizeM2;
-    if (bedType !== undefined) doc.bedType = bedType;
-    if (priceBase !== undefined) doc.priceBase = priceBase;
-    if (currency !== undefined) doc.currency = currency || "USD";
-    if (stock !== undefined) doc.stock = stock ?? 0;
-    if (active !== undefined) doc.active = active !== false;
-
-    if (nextSlug !== undefined) {
-      doc.slug = nextSlug || slugify(title || doc.title || slug);
+    // ננקה ונעדכן רק שדות רלוונטיים למודל
+    const fields = [
+      "title",
+      "slug",
+      "blurb",
+      "features",
+      "maxGuests",
+      "sizeM2",
+      "bedType",
+      "priceBase",
+      "currency",
+      "stock",
+      "active",
+      "hero",
+      "images",
+    ];
+    for (const key of fields) {
+      if (body[key] !== undefined) {
+        if (key === "hero") room.hero = toImgObj(body.hero);
+        else if (key === "images") room.images = toImgArr(body.images);
+        else room[key] = body[key];
+      }
     }
 
-    await doc.save();
-    res.json(toUI(doc));
+    if (body.title && !body.slug) room.slug = slugify(body.title);
+
+    await room.save();
+    res.json(toUI(room));
   } catch (e) {
-    console.error("updateRoomTypeBySlug error:", e);
-    res.status(500).json({ message: "Failed to update room type" });
+    console.error("updateRoomTypeById error:", e);
+    res
+      .status(500)
+      .json({ message: "Failed to update room type", error: e.message });
   }
 };
 
-/* ---------- DELETE /api/v1/rooms/types/:slug ---------- */
-export const deleteRoomTypeBySlug = async (req, res) => {
+/* ============================================================
+   ❌ DELETE — By ID (for admin)
+   ============================================================ */
+export const deleteRoomTypeById = async (req, res) => {
   try {
-    const { slug } = req.params;
-    const doc = await RoomType.findOneAndDelete({ slug });
+    const { id } = req.params;
+    const doc = await RoomType.findByIdAndDelete(id);
     if (!doc) return res.status(404).json({ message: "Room type not found" });
     res.status(204).end();
   } catch (e) {
-    console.error("deleteRoomTypeBySlug error:", e);
+    console.error("deleteRoomTypeById error:", e);
     res.status(500).json({ message: "Failed to delete room type" });
   }
 };

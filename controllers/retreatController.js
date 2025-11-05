@@ -1,26 +1,27 @@
-// controllers/retreatController.js
-import dayjs from "dayjs";
+import moment from "moment";
 import Retreat from "../models/Retreat.js";
+import slugify from "slugify";
 
 /* ---------- Helpers ---------- */
 
-// יוצר מערך של תאריכים בין start ל-end בפורמט YYYY-MM-DD
 function eachDayISO(start, end) {
-  const s = dayjs(start).startOf("day");
-  const e = dayjs(end).startOf("day");
+  const s = moment(start).startOf("day");
+  const e = moment(end).startOf("day");
   const out = [];
-  for (let d = s; !d.isAfter(e, "day"); d = d.add(1, "day")) {
+  for (let d = s.clone(); !d.isAfter(e, "day"); d.add(1, "day")) {
     out.push(d.format("YYYY-MM-DD"));
   }
   return out;
 }
 
-// משלים ימים ריקים בטווח התאריכים לפי startDate ו-endDate
 function ensureScheduleDays(retreat) {
   if (!retreat?.startDate || !retreat?.endDate) return retreat;
   const wanted = new Set(eachDayISO(retreat.startDate, retreat.endDate));
   const current = new Map(
-    (retreat.schedule || []).map((d) => [dayjs(d.date).format("YYYY-MM-DD"), d])
+    (retreat.schedule || []).map((d) => [
+      moment(d.date).format("YYYY-MM-DD"),
+      d,
+    ])
   );
   const merged = [...wanted].map(
     (iso) => current.get(iso) || { date: iso, activities: [] }
@@ -29,16 +30,15 @@ function ensureScheduleDays(retreat) {
   return retreat;
 }
 
-// עוזרים נוספים
-const ISO = (d) => dayjs(d).format("YYYY-MM-DD");
+const ISO = (d) => moment(d).format("YYYY-MM-DD");
 const isHHmm = (s) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(s || ""));
 const sortByTime = (a, b) =>
   String(a.time || "").localeCompare(String(b.time || ""));
 
 function getOrCreateDay(doc, iso) {
-  const s = dayjs(doc.startDate).startOf("day");
-  const e = dayjs(doc.endDate).startOf("day");
-  const d = dayjs(iso, "YYYY-MM-DD", true);
+  const s = moment(doc.startDate).startOf("day");
+  const e = moment(doc.endDate).startOf("day");
+  const d = moment(iso, "YYYY-MM-DD", true);
   if (!d.isValid()) throw new Error("Bad ISO date");
   if (d.isBefore(s) || d.isAfter(e))
     throw new Error("date is out of retreat range");
@@ -47,30 +47,34 @@ function getOrCreateDay(doc, iso) {
   if (!day) {
     day = { date: iso, activities: [] };
     doc.schedule.push(day);
-    doc.schedule.sort((a, b) => dayjs(a.date) - dayjs(b.date));
+    doc.schedule.sort((a, b) => moment(a.date) - moment(b.date));
   }
   return day;
 }
 
-/* ---------- Controllers ---------- */
+/* ============================================================
+ *                      CONTROLLERS
+ * ============================================================ */
 
-/** מפה חודשית לצביעה ב־DatePicker */
+/** 🗓 Monthly map for DatePicker coloring */
 export async function getMonthlyRetreats(req, res, next) {
   try {
-    const year = Number(req.query.year) || dayjs().year();
-    const month = Number(req.query.month) || dayjs().month() + 1;
-    const monthStart = dayjs(`${year}-${String(month).padStart(2, "0")}-01`);
-    const monthEnd = monthStart.endOf("month");
+    const year = Number(req.query.year) || moment().year();
+    const month = Number(req.query.month) || moment().month() + 1;
+    const monthStart = moment(`${year}-${String(month).padStart(2, "0")}-01`);
+    const monthEnd = monthStart.clone().endOf("month");
 
     const docs = await Retreat.find({
       published: true,
       startDate: { $lte: monthEnd.toDate() },
       endDate: { $gte: monthStart.toDate() },
-    }).select("_id name type startDate endDate color price");
+    })
+      .populate("category", "name color")
+      .select("_id name type startDate endDate price category");
 
     const map = {};
     for (const r of docs) {
-      const color = r.color || "#66bb6a";
+      const color = r.category?.color || "#66bb6a";
       for (const iso of eachDayISO(r.startDate, r.endDate)) {
         if (!map[iso]) map[iso] = [];
         map[iso].push({
@@ -78,38 +82,44 @@ export async function getMonthlyRetreats(req, res, next) {
           name: r.name,
           type: r.type,
           color,
+          category: r.category?.name,
           price: r.price,
         });
       }
     }
+
     res.json({ year, month, days: map });
   } catch (e) {
     next(e);
   }
 }
 
-/** לוח לפי טווח תאריכים */
+/** 📅 Calendar range */
 export async function getCalendarDays(req, res, next) {
   try {
     const from = req.query.from
-      ? dayjs(req.query.from)
-      : dayjs().startOf("month");
-    const to = req.query.to ? dayjs(req.query.to) : from.endOf("month");
+      ? moment(req.query.from)
+      : moment().startOf("month");
+    const to = req.query.to
+      ? moment(req.query.to)
+      : from.clone().endOf("month");
 
     const docs = await Retreat.find({
       published: true,
       startDate: { $lte: to.toDate() },
       endDate: { $gte: from.toDate() },
-    }).select("_id name type startDate endDate color price");
+    })
+      .populate("category", "name color")
+      .select("_id name type startDate endDate price category");
 
     const map = new Map();
     for (const iso of eachDayISO(from, to)) map.set(iso, []);
 
     for (const r of docs) {
-      const color = r.color || "#66bb6a";
+      const color = r.category?.color || "#66bb6a";
       const inRangeDays = eachDayISO(
-        dayjs.max(dayjs(r.startDate), from),
-        dayjs.min(dayjs(r.endDate), to)
+        moment.max(moment(r.startDate), from),
+        moment.min(moment(r.endDate), to)
       );
       for (const iso of inRangeDays) {
         map.get(iso)?.push({
@@ -117,6 +127,7 @@ export async function getCalendarDays(req, res, next) {
           name: r.name,
           type: r.type,
           color,
+          category: r.category?.name,
           price: r.price,
         });
       }
@@ -133,10 +144,13 @@ export async function getCalendarDays(req, res, next) {
   }
 }
 
-/** GET /api/v1/retreats/:id */
+/** 🧘 Get retreat by ID (with category info) */
 export async function getRetreatById(req, res, next) {
   try {
-    const doc = await Retreat.findById(req.params.id);
+    const doc = await Retreat.findById(req.params.id).populate(
+      "category",
+      "name color types"
+    );
     if (!doc) return res.status(404).json({ error: "Not found" });
     res.json(doc);
   } catch (e) {
@@ -144,22 +158,27 @@ export async function getRetreatById(req, res, next) {
   }
 }
 
-/** POST /api/v1/retreats */
+/** ➕ Create retreat */
 export async function createRetreat(req, res, next) {
   try {
     const payload = req.body || {};
-    ensureScheduleDays(payload);
+    if (payload.name && !payload.slug) {
+      payload.slug = slugify(payload.name, { lower: true, strict: true });
+    }
+
     const doc = await Retreat.create(payload);
-    res.status(201).json(doc);
+    const populated = await doc.populate("category", "name color types");
+    res.status(201).json(populated);
   } catch (e) {
     next(e);
   }
 }
 
-/** PATCH /api/v1/retreats/:id */
+/** ✏️ Update retreat */
 export async function updateRetreat(req, res, next) {
   try {
     const patch = req.body || {};
+
     if (patch.startDate || patch.endDate) {
       const current = await Retreat.findById(req.params.id).select(
         "startDate endDate schedule"
@@ -175,13 +194,14 @@ export async function updateRetreat(req, res, next) {
 
       const updated = await Retreat.findByIdAndUpdate(req.params.id, merged, {
         new: true,
-      });
+      }).populate("category", "name color types");
       return res.json(updated);
     }
 
     const updated = await Retreat.findByIdAndUpdate(req.params.id, patch, {
       new: true,
-    });
+    }).populate("category", "name color types");
+
     if (!updated) return res.status(404).json({ error: "Not found" });
     res.json(updated);
   } catch (e) {
@@ -189,7 +209,7 @@ export async function updateRetreat(req, res, next) {
   }
 }
 
-/** DELETE /api/v1/retreats/:id */
+/** 🗑 Delete retreat */
 export async function deleteRetreat(req, res, next) {
   try {
     await Retreat.findByIdAndDelete(req.params.id);
@@ -199,24 +219,25 @@ export async function deleteRetreat(req, res, next) {
   }
 }
 
-/* ============================================================
- *      ניהול לו"ז (ימים ופעילויות)
- * ============================================================ */
-
-/** POST /api/v1/retreats/:id/schedule/ensure */
+/** 🔄 Ensure schedule completeness */
 export async function ensureSchedule(req, res, next) {
   try {
     const doc = await Retreat.findById(req.params.id);
     if (!doc) return res.status(404).json({ error: "Not found" });
+
     ensureScheduleDays(doc);
     await doc.save();
+
     res.json(doc.schedule);
   } catch (e) {
     next(e);
   }
 }
 
-/** POST /api/v1/retreats/:id/schedule/day/:iso/activities */
+/* ============================================================
+ *                      Activities
+ * ============================================================ */
+
 export async function addActivity(req, res, next) {
   try {
     const { id, iso } = req.params;
@@ -236,8 +257,6 @@ export async function addActivity(req, res, next) {
       location: req.body.location,
       notes: req.body.notes,
       kind: req.body.kind,
-      refId: req.body.refId,
-      refModel: req.body.refModel,
     };
 
     day.activities.push(payload);
@@ -251,7 +270,6 @@ export async function addActivity(req, res, next) {
   }
 }
 
-/** PUT /api/v1/retreats/:id/schedule/:dayId/activities/:activityId */
 export async function updateActivity(req, res, next) {
   try {
     const { id, dayId, activityId } = req.params;
@@ -276,7 +294,6 @@ export async function updateActivity(req, res, next) {
   }
 }
 
-/** DELETE /api/v1/retreats/:id/schedule/:dayId/activities/:activityId */
 export async function removeActivity(req, res, next) {
   try {
     const { id, dayId, activityId } = req.params;
@@ -296,15 +313,18 @@ export async function removeActivity(req, res, next) {
   }
 }
 
-/** GET /api/v1/retreats/:id/guest-schedule */
+/** 🧘 Public schedule for guests */
 export async function getGuestSchedule(req, res, next) {
   try {
-    const doc = await Retreat.findById(req.params.id);
+    const doc = await Retreat.findById(req.params.id).populate(
+      "category",
+      "name color"
+    );
     if (!doc) return res.status(404).json({ error: "Not found" });
 
     const days = (doc.schedule || [])
       .slice()
-      .sort((a, b) => dayjs(a.date) - dayjs(b.date))
+      .sort((a, b) => moment(a.date) - moment(b.date))
       .map((d) => ({
         iso: ISO(d.date),
         activities: (d.activities || [])
@@ -325,7 +345,8 @@ export async function getGuestSchedule(req, res, next) {
       id: doc._id,
       name: doc.name,
       type: doc.type,
-      color: doc.color,
+      category: doc.category,
+      color: doc.category?.color || "#66bb6a",
       startDate: doc.startDate,
       endDate: doc.endDate,
       days,

@@ -1,39 +1,41 @@
-// routes/rooms.routes.js
 import { Router } from "express";
 import {
-  getRoomTypes,
+  // 🧘 אורחים (slug)
   getRoomByType,
+
+  // 👩‍💼 אדמין (id)
+  getRoomTypes,
+  getRoomTypeById,
   createRoomType,
-  updateRoomTypeBySlug,
-  deleteRoomTypeBySlug,
-} from "../controllers/roomController.js";
-import RoomType from "../models/Room.js";
+  updateRoomTypeById,
+  deleteRoomTypeById,
+} from "../controllers/roomController.js"; // ✅ שימי לב: roomsController.js (ברבים)
 
 const router = Router();
 
-// /api/v1/rooms/types
+/* ============================================================
+   👩‍💼 Routes לאדמין — לפי ID
+   ============================================================ */
+
+// כל סוגי החדרים
 router.get("/types", getRoomTypes);
 
-// /api/v1/rooms/:type
-router.get("/:type", getRoomByType);
+// חדר בודד לפי ID (לעריכה באדמין)
+router.get("/types/:id", getRoomTypeById);
 
-// אם תרצי גם רשימה מלאה של חדרים בסוג:
-// router.get("/:type/list", getRoomsListByType);
-// === יצירת RoomType חדש ===
-router.post("/types", async (req, res, next) => {
-  try {
-    const doc = await RoomType.create(req.body);
-    res.status(201).json(doc);
-  } catch (e) {
-    console.error("❌ Error creating RoomType:", e.message);
-    next(e);
-  }
-});
+// יצירת סוג חדר חדש
+router.post("/types", createRoomType);
 
-// עדכון לפי slug
-router.put("/types/:slug", updateRoomTypeBySlug);
+// עדכון לפי ID (הכי חשוב!)
+router.put("/types/:id", updateRoomTypeById);
 
-// מחיקה לפי slug (מומלץ להוסיף)
-router.delete("/types/:slug", deleteRoomTypeBySlug);
+// מחיקה לפי ID
+router.delete("/types/:id", deleteRoomTypeById);
+
+/* ============================================================
+   🧘 Routes לאורחים — לפי slug
+   ============================================================ */
+// לדוגמה: /api/v1/rooms/azurea
+router.get("/:slug", getRoomByType);
 
 export default router;

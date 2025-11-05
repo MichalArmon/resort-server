@@ -28,7 +28,7 @@ import categoryRoutes from "./router/categoryRoutes.js";
 
 // (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
 import "./models/User.js";
-import "./models/Room.js";
+import "./models/RoomType.js";
 import "./models/Booking.js";
 import "./models/PricingRule.js";
 import "./models/Workshop.js";

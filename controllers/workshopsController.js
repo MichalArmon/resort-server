@@ -1,3 +1,4 @@
+// 📁 controllers/workshopController.js
 import Workshop from "../models/Workshop.js";
 
 /* ---------- Utils ---------- */
@@ -69,7 +70,7 @@ export async function listWorkshops(req, res) {
   }
 }
 
-// GET /workshops/:slug
+// GET /workshops/:slug (לאורח)
 export async function getWorkshop(req, res) {
   try {
     const { slug } = req.params;
@@ -79,6 +80,19 @@ export async function getWorkshop(req, res) {
   } catch (err) {
     console.error("getWorkshop error:", err);
     res.status(500).json({ error: "Failed to get workshop" });
+  }
+}
+
+// ✅ GET /workshops/id/:id (לאדמין)
+export async function getWorkshopById(req, res) {
+  try {
+    const { id } = req.params;
+    const doc = await Workshop.findById(id).lean();
+    if (!doc) return res.status(404).json({ error: "Workshop not found" });
+    res.json(doc);
+  } catch (err) {
+    console.error("getWorkshopById error:", err);
+    res.status(500).json({ error: "Failed to get workshop by ID" });
   }
 }
 
@@ -100,9 +114,9 @@ export async function createWorkshop(req, res) {
       isActive,
     } = req.body;
 
-    const finalSlug = slug ? slugify(slug) : slugify(title);
     if (!title) return res.status(400).json({ error: "title is required" });
 
+    const finalSlug = slug ? slugify(slug) : slugify(title);
     const exists = await Workshop.findOne({ slug: finalSlug }).lean();
     if (exists) return res.status(409).json({ error: "slug already exists" });
 
@@ -129,14 +143,13 @@ export async function createWorkshop(req, res) {
   }
 }
 
-// PUT /workshops/:slug
+// PUT /workshops/:slug (לאורח)
 export async function updateWorkshop(req, res) {
   try {
     const { slug } = req.params;
     const body = { ...req.body };
 
     if (body.slug || body.title) {
-      // אפשר שינוי סלג אם מעוניינים
       body.slug = slugify(body.slug || body.title || slug);
     }
     if (typeof body.hero !== "undefined") body.hero = normalizeImage(body.hero);
@@ -154,7 +167,37 @@ export async function updateWorkshop(req, res) {
     res.json(updated);
   } catch (err) {
     console.error("updateWorkshop error:", err);
-    // 11000 = duplicate key (יכול לקרות אם משנים slug לקיים)
+    if (err?.code === 11000) {
+      return res.status(409).json({ error: "slug already exists" });
+    }
+    res.status(500).json({ error: "Failed to update workshop" });
+  }
+}
+
+// ✅ PUT /workshops/id/:id (לאדמין)
+export async function updateWorkshopById(req, res) {
+  try {
+    const { id } = req.params;
+    const body = { ...req.body };
+
+    // אם שונה שם ואין slug חדש – נעדכן אוטומטית
+    if (body.title && !body.slug) {
+      body.slug = slugify(body.title);
+    }
+
+    if (typeof body.hero !== "undefined") body.hero = normalizeImage(body.hero);
+    if (typeof body.gallery !== "undefined")
+      body.gallery = normalizeGallery(body.gallery);
+
+    const updated = await Workshop.findByIdAndUpdate(id, body, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!updated) return res.status(404).json({ error: "Workshop not found" });
+    res.json(updated);
+  } catch (err) {
+    console.error("updateWorkshopById error:", err);
     if (err?.code === 11000) {
       return res.status(409).json({ error: "slug already exists" });
     }
