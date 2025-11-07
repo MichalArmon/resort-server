@@ -25,10 +25,11 @@ import treatmentsRoutes from "./router/treatmentsRoutes.js";
 import recurringRulesRoutes from "./router/recurringRulesRoutes.js";
 import scheduleRoutes from "./router/scheduleRoutes.js";
 import categoryRoutes from "./router/categoryRoutes.js";
+import userRoutes from "./router/userRoutes.js";
 
 // (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
 import "./models/User.js";
-import "./models/RoomType.js";
+import "./models/Room.js";
 import "./models/Booking.js";
 import "./models/PricingRule.js";
 import "./models/Workshop.js";
@@ -96,6 +97,7 @@ app.use("/api/v1/workshops", workshopsRoutes);
 app.use("/api/v1/treatments", treatmentsRoutes);
 app.use("/api/v1/recurring-rules", recurringRulesRoutes);
 app.use("/api/v1/schedule", scheduleRoutes);
+app.use("/api/v1/users", userRoutes);
 
 // ✅ חשוב: הראוטר הכללי תחת /api/v1 חייב להגיע *אחרי* כל הספציפיים
 app.use("/api/v1", router);

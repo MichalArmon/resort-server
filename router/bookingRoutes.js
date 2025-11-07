@@ -2,21 +2,31 @@ import { Router } from "express";
 import {
   checkAvailability,
   getQuote,
-  createBooking, // ← להחזיר!
-  // getUsersBookings,
-  // getAllBookings,
-  // updateBooking,
+  createBooking,
+  getUsersBookings,
+  getAllBookings,
+  updateBooking,
 } from "../controllers/bookingController.js";
 
 const router = Router();
 
+/* ===========================
+   🧭 Public endpoints
+   =========================== */
 router.get("/availability", checkAvailability);
 router.post("/quote", getQuote);
-
-// ✅ זה הנתיב שנשתמש בו מהקליינט
 router.post("/", createBooking);
 
-// // אם מתעקשים גם על /book אפשר בנוסף:
-// // router.post("/book", createBooking);
+/* ===========================
+   🔒 Admin / User endpoints
+   =========================== */
+// כל ההזמנות — לאדמין
+router.get("/all", getAllBookings);
+
+// ההזמנות של משתמש יחיד לפי אימייל או יוזר מחובר
+router.get("/user", getUsersBookings);
+
+// עדכון סטטוס (למשל Pending → Confirmed)
+router.put("/:id", updateBooking);
 
 export default router;

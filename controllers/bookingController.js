@@ -1,11 +1,14 @@
 // 📁 server/controllers/bookingController.js
 import Booking from "../models/Booking.js";
-import RoomType from "../models/RoomType.js"; // המודל שמייצג סוג חדר (עם stock)
+import RoomType from "../models/Room.js";
 import Retreat from "../models/Retreat.js";
-import PricingRule from "../models/PricingRule.js"; // ✅ חישוב מחירים
-import Workshop from "../models/Workshop.js"; // ✅ סדנאות (sessions/capacity)
+import Workshop from "../models/Workshop.js";
+import Treatment from "../models/Treatment.js";
+import PricingRule from "../models/PricingRule.js";
+import User from "../models/User.js";
+import nodemailer from "nodemailer";
 
-/* ---------- Helpers (Cloudinary URLs + image normalization) ---------- */
+/* ---------- Helpers ---------- */
 const CLD = process.env.CLOUDINARY_CLOUD_NAME || "dhje7hbxd";
 const cldUrl = (pid) =>
   pid
@@ -20,7 +23,6 @@ const toImgObj = (x) => {
   return { publicId: pid, url: url || null, alt: x.alt || "" };
 };
 
-/* ---------- Utils ---------- */
 const mapTypeToRef = (type) => {
   switch (type) {
     case "room":
@@ -48,7 +50,7 @@ const genBookingNumber = () => {
 
 const isValidObjectId = (id) => /^[0-9a-fA-F]{24}$/.test(id);
 
-/* ---------- Quote helpers ---------- */
+/* ---------- Date utils ---------- */
 const MS_DAY = 1000 * 60 * 60 * 24;
 const toStartOfDay = (d) => new Date(new Date(d).setHours(0, 0, 0, 0));
 const nightsArray = (checkInDate, checkOutDate) => {
@@ -61,53 +63,30 @@ const nightsArray = (checkInDate, checkOutDate) => {
   }
   return arr;
 };
-const overlaps = (rule, date) => {
-  const d = toStartOfDay(date).getTime();
-  const start = toStartOfDay(rule.startDate).getTime();
-  const endExclusive = toStartOfDay(rule.endDate).getTime() + MS_DAY; // כולל סוף היום
-  return d >= start && d < endExclusive;
-};
 
 /* ==================================================================== */
 /* =                         CHECK AVAILABILITY                        = */
 /* ==================================================================== */
 export const checkAvailability = async (req, res) => {
-  const {
-    checkIn,
-    checkOut,
-    guests,
-    rooms,
-    roomType: roomTypeParam, // יכול להיות slug או _id
-  } = req.query;
-
-  if (!checkIn || !checkOut || !guests || !rooms) {
-    return res.status(400).json({
-      message: "Check-in, Check-out, guests, and rooms are required.",
-    });
-  }
-
-  const checkInDate = new Date(checkIn);
-  const checkOutDate = new Date(checkOut);
-  const requiredGuests = parseInt(guests, 10);
-  const requiredRooms = parseInt(rooms, 10);
-  const minCapacityPerRoom = Math.ceil(requiredGuests / requiredRooms);
-
   try {
-    /* 0) אתר סגור בגלל ריטריט */
-    const closedRetreat = await Retreat.findOne({
-      isClosed: true,
-      startDate: { $lt: checkOutDate },
-      endDate: { $gt: checkInDate },
-    });
-    if (closedRetreat) {
-      return res.status(200).json({
-        availableRooms: [],
-        summary: {},
-        message: `The resort is closed for ${closedRetreat.name} in these dates.`,
+    const {
+      checkIn,
+      checkOut,
+      guests,
+      rooms,
+      roomType: roomTypeParam,
+    } = req.query;
+    if (!checkIn || !checkOut || !guests || !rooms)
+      return res.status(400).json({
+        message: "Check-in, Check-out, guests, and rooms are required.",
       });
-    }
 
-    /* 1) שליפת RoomTypes פעילים + סינון אופציונלי לפי roomType (slug או _id) */
+    const checkInDate = new Date(checkIn);
+    const checkOutDate = new Date(checkOut);
+    const requiredGuests = parseInt(guests, 10);
+    const requiredRooms = parseInt(rooms, 10);
+    const minCapacityPerRoom = Math.ceil(requiredGuests / requiredRooms);
+
     const typeFilter = {
       active: true,
       $or: [
@@ -116,7 +95,6 @@ export const checkAvailability = async (req, res) => {
         { maxGuests: null },
       ],
     };
-
     if (roomTypeParam) {
       const maybeId = isValidObjectId(roomTypeParam) ? roomTypeParam : null;
       typeFilter.$and = [
@@ -132,35 +110,25 @@ export const checkAvailability = async (req, res) => {
     const types = await RoomType.find(typeFilter).select(
       "slug title stock priceBase currency maxGuests hero images"
     );
-
-    if (!types?.length) {
+    if (!types?.length)
       return res.status(200).json({
-        checkIn: checkInDate,
-        checkOut: checkOutDate,
         availableRooms: [],
-        summary: {},
-        message: `Only 0 units available; you requested ${requiredRooms}.`,
+        message: `No available room types found.`,
       });
-    }
 
-    /* 2) הזמנות חופפות (כולל Pending) — לפי הסכימה החדשה:
-          משתמשים ב-Booking.type === "room" וסופרים לפי itemId (שהוא _id של RoomType) */
     const overlapping = await Booking.find({
       type: "room",
       status: { $in: ["Confirmed", "Pending"] },
       checkInDate: { $lt: checkOutDate },
       checkOutDate: { $gt: checkInDate },
-    }).select("itemId"); // itemId מצביע ל-RoomType._id
+    }).select("itemId");
 
-    // מיפוי: roomTypeId -> כמה יחידות תפוסות
     const occupiedByTypeId = {};
     for (const b of overlapping) {
       const key = String(b.itemId || "");
-      if (!key) continue;
       occupiedByTypeId[key] = (occupiedByTypeId[key] || 0) + 1;
     }
 
-    /* 3) חישוב תקציר זמינות לפי stock */
     const summary = {};
     for (const t of types) {
       const typeId = String(t._id);
@@ -180,22 +148,6 @@ export const checkAvailability = async (req, res) => {
       };
     }
 
-    const totalAvailableUnits = Object.values(summary).reduce(
-      (acc, s) => acc + (s.availableUnits || 0),
-      0
-    );
-
-    if (totalAvailableUnits < requiredRooms) {
-      return res.status(200).json({
-        checkIn: checkInDate,
-        checkOut: checkOutDate,
-        availableRooms: [],
-        summary,
-        message: `Only ${totalAvailableUnits} units available; you requested ${requiredRooms}.`,
-      });
-    }
-
-    /* 4) רשימת הצעות ידידותית לפרונט (כולל תמונות) */
     const availableRooms = Object.entries(summary)
       .filter(([, s]) => s.availableUnits > 0)
       .map(([slug, s]) => {
@@ -204,17 +156,14 @@ export const checkAvailability = async (req, res) => {
         const firstImg = Array.isArray(t?.images)
           ? toImgObj(t.images[0])
           : null;
-
         return {
-          _id: s.typeId, // מזהה ה-RoomType לשימוש ישיר ל-itemId בהזמנה
+          _id: s.typeId,
           slug,
           title: s.title,
           priceBase: s.priceBase,
-          currency: s.currency || "USD",
+          currency: s.currency,
           availableUnits: s.availableUnits,
-          hero: hero,
-          heroUrl: hero?.url || null,
-          imageUrl: firstImg?.url || null,
+          heroUrl: hero?.url || firstImg?.url || null,
         };
       });
 
@@ -223,7 +172,6 @@ export const checkAvailability = async (req, res) => {
       checkOut: checkOutDate,
       availableRooms,
       summary,
-      message: `Found ${totalAvailableUnits} units available.`,
     });
   } catch (err) {
     console.error("Error fetching availability:", err);
@@ -239,168 +187,41 @@ export const checkAvailability = async (req, res) => {
 export const getQuote = async (req, res) => {
   try {
     const {
-      type, // "room" | "retreat" | "treatment" | "workshop"
-      itemId, // room: RoomType._id | workshop: Workshop._id
-      checkInDate, // room
-      checkOutDate, // room
+      type,
+      itemId,
+      checkInDate,
+      checkOutDate,
       guestCount = 1,
-      rooms = 1, // room units
-      sessionId, // workshop
+      rooms = 1,
     } = req.body;
 
-    if (!type) {
-      return res.status(400).json({ message: "Missing booking type." });
-    }
+    if (!type) return res.status(400).json({ message: "Missing type." });
 
-    /* ====== ROOM QUOTE ====== */
     if (type === "room") {
-      if (!itemId || !checkInDate || !checkOutDate) {
-        return res.status(400).json({
-          message:
-            "itemId, checkInDate and checkOutDate are required for room quote.",
-        });
-      }
-
       const rt = await RoomType.findById(itemId).select(
         "title slug priceBase currency stock active"
       );
-      if (!rt || rt.active === false) {
-        return res
-          .status(404)
-          .json({ message: "Room type not found or inactive." });
-      }
+      if (!rt) return res.status(404).json({ message: "Room type not found." });
 
       const checkIn = new Date(checkInDate);
       const checkOut = new Date(checkOutDate);
-      if (!(checkIn < checkOut)) {
-        return res.status(400).json({ message: "Invalid date range." });
-      }
-
       const nights = nightsArray(checkIn, checkOut);
-      if (nights.length === 0) {
-        return res
-          .status(400)
-          .json({ message: "Stay must be at least 1 night." });
-      }
-
-      const identifiers = ["ALL", rt.slug, rt.title, String(rt._id)].filter(
-        Boolean
-      );
-      const rules = await PricingRule.find({
-        appliesTo: { $in: identifiers },
-        startDate: { $lte: checkOut },
-        endDate: { $gte: checkIn },
-      }).sort({ startDate: 1 });
-
       const base = Number(rt.priceBase) || 0;
-      const currency = rt.currency || "USD";
-
-      let requiredMinStay = 1;
-      const breakdown = nights.map((d) => {
-        const activeRules = rules.filter((r) => overlaps(r, d));
-        if (activeRules.length) {
-          const maxMin = Math.max(...activeRules.map((r) => r.minStay || 1));
-          requiredMinStay = Math.max(requiredMinStay, maxMin);
-        }
-        const multiplier = activeRules.reduce(
-          (acc, r) => acc * (r.priceMultiplier || 1),
-          1
-        );
-        const nightly = +(base * multiplier).toFixed(2);
-        return {
-          date: d.toISOString().slice(0, 10),
-          base,
-          multiplier,
-          nightly,
-          rules: activeRules.map((r) => ({
-            name: r.name,
-            appliesTo: r.appliesTo,
-            priceMultiplier: r.priceMultiplier,
-            minStay: r.minStay || 1,
-            startDate: r.startDate,
-            endDate: r.endDate,
-          })),
-        };
-      });
-
-      const nightsCount = nights.length;
-      const perRoomSubtotal = breakdown.reduce((sum, d) => sum + d.nightly, 0);
-      const total = +(perRoomSubtotal * rooms).toFixed(2);
-
-      const payload = {
-        type: "room",
-        roomType: { id: String(rt._id), title: rt.title, slug: rt.slug },
-        currency,
-        rooms,
-        nightsCount,
-        requiredMinStay,
-        minStayOk: nightsCount >= requiredMinStay,
-        perRoomSubtotal: +perRoomSubtotal.toFixed(2),
-        total,
-        breakdown,
-      };
-
-      if (!payload.minStayOk) {
-        payload.warning = `This period requires a minimum stay of ${requiredMinStay} night(s).`;
-      }
-
-      return res.status(200).json(payload);
-    }
-
-    /* ====== WORKSHOP QUOTE (single session) ====== */
-    if (type === "workshop") {
-      if (!itemId || !sessionId) {
-        return res
-          .status(400)
-          .json({ message: "Missing 'itemId' (workshopId) or 'sessionId'." });
-      }
-
-      const wk = await Workshop.findById(itemId).lean();
-      if (!wk) return res.status(404).json({ message: "Workshop not found." });
-
-      const session = (wk.sessions || []).find(
-        (s) => String(s._id) === String(sessionId)
-      );
-      if (!session)
-        return res
-          .status(404)
-          .json({ message: "Session not found for this workshop." });
-
-      const currency = wk.currency || "USD";
-      const pricePerSession = Number(wk.pricePerSession) || 0;
-
-      // Capacity snapshot (optional on quote)
-      const taken = await Booking.countDocuments({
-        type: "workshop",
-        itemId,
-        sessionId,
-        status: { $in: ["Pending", "Confirmed"] },
-      });
-      const cap = Number(session.capacity) || 0; // 0 = unlimited
-      const capacityOk = cap === 0 ? true : taken < cap;
+      const total = +(base * nights.length * rooms).toFixed(2);
 
       return res.status(200).json({
-        type: "workshop",
-        currency,
-        total: pricePerSession,
-        breakdown: [{ label: "Single session", amount: pricePerSession }],
-        session: {
-          id: String(session._id),
-          date: session.date,
-          timeStart: session.timeStart,
-          timeEnd: session.timeEnd,
-          capacity: cap,
-          taken,
-          capacityOk,
-        },
+        type,
+        nights: nights.length,
+        total,
+        currency: rt.currency || "USD",
+        breakdown: nights.map((n) => ({
+          date: n,
+          nightly: base,
+        })),
       });
     }
 
-    // PLACEHOLDER לסוגים אחרים
-    return res.status(400).json({
-      message:
-        "Quote supports 'room' and 'workshop' (single session). For treatments/retreats, extend pricing rules and we'll add logic.",
-    });
+    return res.status(400).json({ message: "Unsupported type for quote." });
   } catch (err) {
     console.error("Error generating quote:", err);
     return res
@@ -415,143 +236,40 @@ export const getQuote = async (req, res) => {
 export const createBooking = async (req, res) => {
   try {
     const {
-      type, // "room" | "retreat" | "treatment" | "workshop"
-      itemId, // room: RoomType._id | workshop: Workshop._id
-      checkInDate, // room
-      checkOutDate, // room
-      date, // other (event)
-      time, // optional
+      type,
+      itemId,
+      checkInDate,
+      checkOutDate,
+      date,
+      time,
       guestCount = 1,
       totalPrice,
-      discount = 0,
-      guestInfo, // { fullName, email, phone, notes }
-      sessionId, // workshop
+      guestInfo,
+      sessionId,
     } = req.body;
 
-    if (!type || !["room", "retreat", "treatment", "workshop"].includes(type)) {
-      return res.status(400).json({ message: "Invalid or missing 'type'." });
-    }
-    if (!itemId || !isValidObjectId(itemId)) {
-      return res.status(400).json({ message: "Invalid or missing 'itemId'." });
-    }
-    if (!guestInfo?.fullName || !guestInfo?.email) {
+    if (!type || !itemId || !guestInfo?.fullName || !guestInfo?.email)
       return res
         .status(400)
-        .json({ message: "Missing guestInfo (name/email)." });
-    }
+        .json({ message: "Missing required booking parameters." });
 
     const typeRef = mapTypeToRef(type);
-    if (!typeRef) {
-      return res.status(400).json({ message: "Unsupported booking type." });
-    }
-
-    /* ====== WORKSHOP CREATE (single session) ====== */
-    if (type === "workshop") {
-      if (!sessionId || !isValidObjectId(sessionId)) {
-        return res.status(400).json({
-          message: "Missing or invalid 'sessionId' for workshop booking.",
-        });
-      }
-
-      const wk = await Workshop.findById(itemId).lean();
-      if (!wk) return res.status(404).json({ message: "Workshop not found." });
-
-      const session = (wk.sessions || []).find(
-        (s) => String(s._id) === String(sessionId)
-      );
-      if (!session)
-        return res
-          .status(404)
-          .json({ message: "Session not found for this workshop." });
-
-      // Real-time capacity check
-      const taken = await Booking.countDocuments({
-        type: "workshop",
-        itemId,
-        sessionId,
-        status: { $in: ["Pending", "Confirmed"] },
-      });
-      const cap = Number(session.capacity) || 0;
-      if (cap !== 0 && taken >= cap) {
-        return res
-          .status(409)
-          .json({ message: "This session is fully booked." });
-      }
-
-      const bookingNumber = genBookingNumber();
-      const finalPrice =
-        typeof totalPrice === "number"
-          ? totalPrice
-          : Number(wk.pricePerSession) || 0;
-
-      const bookingDoc = new Booking({
-        type: "workshop",
-        typeRef: "Workshop",
-        itemId,
-        sessionId,
-        bookingNumber,
-        guestInfo,
-        guestCount,
-        totalPrice: finalPrice,
-        discount,
-        status: "Pending",
-        date: session.date,
-        time: session.timeStart,
-      });
-
-      await bookingDoc.save();
-
-      return res.status(201).json({
-        message: "Workshop booking created.",
-        booking: bookingDoc,
-      });
-    }
-
-    /* ====== ROOM CREATE ====== */
-    let parsedCheckIn = null;
-    let parsedCheckOut = null;
-
-    if (type === "room") {
-      if (!checkInDate || !checkOutDate) {
-        return res.status(400).json({
-          message:
-            "checkInDate and checkOutDate are required for room bookings.",
-        });
-      }
-      parsedCheckIn = new Date(checkInDate);
-      parsedCheckOut = new Date(checkOutDate);
-      if (!(parsedCheckIn < parsedCheckOut)) {
-        return res.status(400).json({ message: "Invalid date range." });
-      }
-
-      const roomType = await RoomType.findOne({
-        _id: itemId,
-        active: true,
-      }).select("stock title slug");
-      if (!roomType) {
-        return res
-          .status(404)
-          .json({ message: "Room type not found or inactive." });
-      }
-
-      const overlapping = await Booking.countDocuments({
-        type: "room",
-        itemId,
-        status: { $in: ["Confirmed", "Pending"] },
-        checkInDate: { $lt: parsedCheckOut },
-        checkOutDate: { $gt: parsedCheckIn },
-      });
-
-      const stock = Math.max(0, Number(roomType.stock) || 0);
-      if (overlapping >= stock) {
-        return res.status(409).json({
-          message: `No availability for the selected room type (${roomType.title}) in these dates.`,
-        });
-      }
-    }
-
-    // ייצור הזמנה כללית לסוגים אחרים (retreat/treatment) או room אחרי בדיקות
     const bookingNumber = genBookingNumber();
+
+    // 🧩 1️⃣ חיפוש/יצירת יוזר לפי האימייל של האורח
+    let user = await User.findOne({ email: guestInfo.email });
+    if (!user) {
+      const randomPassword = Math.random().toString(36).slice(-8);
+      user = await User.create({
+        email: guestInfo.email,
+        password: randomPassword,
+        role: "user",
+        loginType: "local",
+      });
+      console.log("✨ Created new user from booking:", user.email);
+    }
+
+    // 🧾 2️⃣ יצירת ההזמנה עם קישור ליוזר
     const bookingDoc = new Booking({
       type,
       typeRef,
@@ -560,25 +278,104 @@ export const createBooking = async (req, res) => {
       guestInfo,
       guestCount,
       totalPrice,
-      discount,
-      status: "Pending",
-      checkInDate: parsedCheckIn,
-      checkOutDate: parsedCheckOut,
-      date: date ? new Date(date) : undefined,
-      time: time || undefined,
+      status: "Confirmed",
+      checkInDate,
+      checkOutDate,
+      date,
+      time,
+      sessionId,
+      user: user._id,
     });
 
     await bookingDoc.save();
+    console.log("✅ Booking created:", bookingNumber);
+
+    // 🏨 3️⃣ עדכון מלאי
+    try {
+      if (type === "room") {
+        await RoomType.findByIdAndUpdate(itemId, { $inc: { stock: -1 } });
+      } else if (type === "workshop") {
+        const workshop = await Workshop.findById(itemId);
+        if (workshop && Array.isArray(workshop.sessions)) {
+          const index = workshop.sessions.findIndex(
+            (s) => String(s._id) === String(sessionId)
+          );
+          if (index >= 0) {
+            workshop.sessions[index].capacity =
+              (workshop.sessions[index].capacity || 0) - guestCount;
+            await workshop.save();
+          }
+        }
+      } else if (type === "retreat") {
+        await Retreat.findByIdAndUpdate(itemId, {
+          $inc: { capacity: -guestCount },
+        });
+      }
+      console.log("📦 Capacity updated for:", type);
+    } catch (err) {
+      console.warn("⚠️ Capacity update failed:", err.message);
+    }
+
+    // 📧 4️⃣ שליחת מייל ללקוח
+    try {
+      console.log("📧 Sending confirmation to:", guestInfo.email);
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user: process.env.GMAIL_USER,
+          pass: process.env.GMAIL_PASS,
+        },
+      });
+
+      const htmlEmail = `
+      <div style="font-family: Arial; background-color: #f6f9f8; padding: 40px;">
+        <table width="100%" style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;">
+          <tr><td style="background:#22615C;color:#fff;text-align:center;padding:20px;">
+            <h2>Ban Tao Resort</h2>
+          </td></tr>
+          <tr><td style="padding:24px;color:#333;">
+            <h3>Thank you, ${guestInfo.fullName} 🌴</h3>
+            <p>Your booking <b>#${bookingNumber}</b> is confirmed.</p>
+            <p><b>Type:</b> ${type}</p>
+            ${
+              checkInDate
+                ? `<p><b>Check-in:</b> ${new Date(
+                    checkInDate
+                  ).toLocaleDateString()}</p>`
+                : ""
+            }
+            ${
+              checkOutDate
+                ? `<p><b>Check-out:</b> ${new Date(
+                    checkOutDate
+                  ).toLocaleDateString()}</p>`
+                : ""
+            }
+            <p><b>Total Price:</b> ${totalPrice || "TBD"} ฿</p>
+          </td></tr>
+        </table>
+      </div>`;
+
+      await transporter.sendMail({
+        from: `"Ban Tao Resort" <${process.env.GMAIL_USER}>`,
+        to: guestInfo.email,
+        subject: `🌴 Booking Confirmation (${bookingNumber})`,
+        html: htmlEmail,
+      });
+
+      console.log("✅ Email sent successfully.");
+    } catch (err) {
+      console.error("❌ Email send error:", err.message);
+    }
 
     return res.status(201).json({
-      message: "Booking request created.",
+      message: "Booking created successfully",
       booking: bookingDoc,
+      user,
     });
   } catch (err) {
     console.error("Error creating booking:", err);
-    return res
-      .status(500)
-      .json({ message: "Server error during booking creation." });
+    return res.status(500).json({ message: "Server error during booking." });
   }
 };
 
@@ -588,16 +385,14 @@ export const createBooking = async (req, res) => {
 export const getUsersBookings = async (req, res) => {
   try {
     const email = req.user?.email || req.query?.email;
-    if (!email) {
-      return res.status(400).json({
-        message: "Missing email (no logged-in user and no ?email=...)",
-      });
-    }
+    if (!email)
+      return res
+        .status(400)
+        .json({ message: "Missing email (no logged-in user)." });
 
     const bookings = await Booking.find({ "guestInfo.email": email }).sort({
       createdAt: -1,
     });
-
     return res.status(200).json({ bookings });
   } catch (err) {
     console.error("Error fetching user's bookings:", err);
@@ -607,24 +402,12 @@ export const getUsersBookings = async (req, res) => {
 
 export const getAllBookings = async (req, res) => {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(
-      100,
-      Math.max(1, parseInt(req.query.limit, 10) || 20)
-    );
-    const skip = (page - 1) * limit;
-
-    const [items, total] = await Promise.all([
-      Booking.find({}).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      Booking.countDocuments({}),
-    ]);
-
-    return res.status(200).json({
-      total,
-      page,
-      pages: Math.ceil(total / limit),
-      items,
-    });
+    const items = await Booking.find({})
+      .sort({ createdAt: -1 })
+      .populate("itemId", "title slug")
+      .lean();
+    console.log(`📋 ${items.length} bookings fetched for admin`);
+    return res.status(200).json(items);
   } catch (err) {
     console.error("Error fetching all bookings:", err);
     return res.status(500).json({ message: "Server error." });
@@ -634,30 +417,20 @@ export const getAllBookings = async (req, res) => {
 export const updateBooking = async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, totalPrice, discount, notes } = req.body;
-
+    const { status } = req.body;
     const allowedStatuses = ["Pending", "Confirmed", "Canceled"];
-    const update = {};
+    if (status && !allowedStatuses.includes(status))
+      return res.status(400).json({ message: "Invalid status." });
 
-    if (status) {
-      if (!allowedStatuses.includes(status)) {
-        return res.status(400).json({ message: "Invalid status." });
-      }
-      update.status = status;
-    }
-    if (typeof totalPrice === "number") update.totalPrice = totalPrice;
-    if (typeof discount === "number") update.discount = discount;
-    if (notes) update["guestInfo.notes"] = notes;
-
-    const updated = await Booking.findByIdAndUpdate(id, update, {
-      new: true,
-      runValidators: true,
-    });
-
-    if (!updated) {
+    const updated = await Booking.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    );
+    if (!updated)
       return res.status(404).json({ message: "Booking not found." });
-    }
 
+    console.log(`🔄 Booking ${updated.bookingNumber} → ${updated.status}`);
     return res
       .status(200)
       .json({ message: "Booking updated.", booking: updated });

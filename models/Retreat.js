@@ -1,6 +1,15 @@
 import mongoose from "mongoose";
 import slugify from "slugify";
 
+const ImageSchema = new mongoose.Schema(
+  {
+    url: { type: String, trim: true },
+    alt: { type: String, trim: true },
+    publicId: { type: String, trim: true },
+  },
+  { _id: false }
+);
+
 const RetreatSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
@@ -18,14 +27,8 @@ const RetreatSchema = new mongoose.Schema(
 
     // עיצוב / מדיה
     color: { type: String },
-    hero: { type: String },
-    gallery: [
-      {
-        url: String,
-        alt: String,
-        publicId: String,
-      },
-    ],
+    hero: { type: ImageSchema, default: {} },
+    gallery: { type: [ImageSchema], default: [] },
 
     // תוכן
     blurb: { type: String },

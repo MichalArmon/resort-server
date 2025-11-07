@@ -54,7 +54,7 @@ router.get("/calendar", getCalendarDays);
 /* ---------- CRUD בסיסי ---------- */
 router.get("/:id", getRetreatById);
 router.post("/", createRetreat);
-router.patch("/:id", updateRetreat);
+router.put("/:id", updateRetreat);
 router.delete("/:id", deleteRetreat);
 
 /* ---------- ניהול לו״ז ---------- */

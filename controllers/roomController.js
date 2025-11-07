@@ -1,5 +1,5 @@
 // 📁 server/controllers/roomsController.js
-import RoomType from "../models/RoomType.js";
+import Room from "../models/Room.js";
 
 /* ============================================================
    🧩 Helpers
@@ -77,58 +77,58 @@ const toUI = (doc) => {
 };
 
 /* ============================================================
-   📜 GET — All room types
+   📜 GET — All rooms
    ============================================================ */
-export const getRoomTypes = async (_req, res) => {
+export const getRooms = async (_req, res) => {
   try {
-    const docs = await RoomType.find({}).lean();
+    const docs = await Room.find({}).lean();
     res.json(docs.map(toUI));
   } catch (e) {
-    console.error("getRoomTypes error:", e);
-    res.status(500).json({ message: "Failed to fetch room types" });
+    console.error("getRooms error:", e);
+    res.status(500).json({ message: "Failed to fetch rooms" });
   }
 };
 
 /* ============================================================
    📘 GET — By slug (for guests)
    ============================================================ */
-export const getRoomByType = async (req, res) => {
+export const getRoomBySlug = async (req, res) => {
   try {
-    const { type } = req.params;
-    if (!type) return res.status(400).json({ message: "type is required" });
+    const { slug } = req.params;
+    if (!slug) return res.status(400).json({ message: "slug is required" });
 
-    const rt = await RoomType.findOne({ slug: type, active: true });
-    if (!rt) return res.status(404).json({ message: "Room type not found" });
+    const room = await Room.findOne({ slug, active: true });
+    if (!room) return res.status(404).json({ message: "Room not found" });
 
-    res.json(toUI(rt));
+    res.json(toUI(room));
   } catch (e) {
-    console.error("getRoomByType error:", e);
-    res.status(500).json({ message: "Failed to fetch room by type" });
+    console.error("getRoomBySlug error:", e);
+    res.status(500).json({ message: "Failed to fetch room by slug" });
   }
 };
 
 /* ============================================================
    📗 GET — By ID (for admin)
    ============================================================ */
-export const getRoomTypeById = async (req, res) => {
+export const getRoomById = async (req, res) => {
   try {
     const { id } = req.params;
     if (!id) return res.status(400).json({ message: "Missing ID" });
 
-    const room = await RoomType.findById(id);
+    const room = await Room.findById(id);
     if (!room) return res.status(404).json({ message: "Room not found" });
 
     res.json(toUI(room));
   } catch (e) {
-    console.error("getRoomTypeById error:", e);
+    console.error("getRoomById error:", e);
     res.status(500).json({ message: "Failed to fetch room by ID" });
   }
 };
 
 /* ============================================================
-   ➕ POST — Create new room type
+   ➕ POST — Create new room
    ============================================================ */
-export const createRoomType = async (req, res) => {
+export const createRoom = async (req, res) => {
   try {
     const {
       title,
@@ -164,26 +164,25 @@ export const createRoomType = async (req, res) => {
       active: active !== false,
     };
 
-    const created = await RoomType.create(payload);
+    const created = await Room.create(payload);
     res.status(201).json(toUI(created));
   } catch (e) {
-    console.error("createRoomType error:", e);
-    res.status(500).json({ message: "Failed to create room type" });
+    console.error("createRoom error:", e);
+    res.status(500).json({ message: "Failed to create room" });
   }
 };
 
 /* ============================================================
    ✏️ PUT — Update by ID (for admin)
    ============================================================ */
-export const updateRoomTypeById = async (req, res) => {
+export const updateRoomById = async (req, res) => {
   try {
     const { id } = req.params;
-    const room = await RoomType.findById(id);
+    const room = await Room.findById(id);
     if (!room) return res.status(404).json({ message: "Room not found" });
 
     const body = req.body;
 
-    // ננקה ונעדכן רק שדות רלוונטיים למודל
     const fields = [
       "title",
       "slug",
@@ -212,24 +211,24 @@ export const updateRoomTypeById = async (req, res) => {
     await room.save();
     res.json(toUI(room));
   } catch (e) {
-    console.error("updateRoomTypeById error:", e);
+    console.error("updateRoomById error:", e);
     res
       .status(500)
-      .json({ message: "Failed to update room type", error: e.message });
+      .json({ message: "Failed to update room", error: e.message });
   }
 };
 
 /* ============================================================
    ❌ DELETE — By ID (for admin)
    ============================================================ */
-export const deleteRoomTypeById = async (req, res) => {
+export const deleteRoomById = async (req, res) => {
   try {
     const { id } = req.params;
-    const doc = await RoomType.findByIdAndDelete(id);
-    if (!doc) return res.status(404).json({ message: "Room type not found" });
+    const doc = await Room.findByIdAndDelete(id);
+    if (!doc) return res.status(404).json({ message: "Room not found" });
     res.status(204).end();
   } catch (e) {
-    console.error("deleteRoomTypeById error:", e);
-    res.status(500).json({ message: "Failed to delete room type" });
+    console.error("deleteRoomById error:", e);
+    res.status(500).json({ message: "Failed to delete room" });
   }
 };

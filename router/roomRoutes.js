@@ -1,15 +1,16 @@
+// 📁 server/router/roomsRoutes.js
 import { Router } from "express";
 import {
   // 🧘 אורחים (slug)
-  getRoomByType,
+  getRoomBySlug,
 
   // 👩‍💼 אדמין (id)
-  getRoomTypes,
-  getRoomTypeById,
-  createRoomType,
-  updateRoomTypeById,
-  deleteRoomTypeById,
-} from "../controllers/roomController.js"; // ✅ שימי לב: roomsController.js (ברבים)
+  getRooms,
+  getRoomById,
+  createRoom,
+  updateRoomById,
+  deleteRoomById,
+} from "../controllers/roomController.js"; // ✅ שמנו ברבים
 
 const router = Router();
 
@@ -17,25 +18,25 @@ const router = Router();
    👩‍💼 Routes לאדמין — לפי ID
    ============================================================ */
 
-// כל סוגי החדרים
-router.get("/types", getRoomTypes);
+// כל החדרים
+router.get("/", getRooms);
 
 // חדר בודד לפי ID (לעריכה באדמין)
-router.get("/types/:id", getRoomTypeById);
+router.get("/:id", getRoomById);
 
-// יצירת סוג חדר חדש
-router.post("/types", createRoomType);
+// יצירת חדר חדש
+router.post("/", createRoom);
 
 // עדכון לפי ID (הכי חשוב!)
-router.put("/types/:id", updateRoomTypeById);
+router.put("/:id", updateRoomById);
 
 // מחיקה לפי ID
-router.delete("/types/:id", deleteRoomTypeById);
+router.delete("/:id", deleteRoomById);
 
 /* ============================================================
    🧘 Routes לאורחים — לפי slug
    ============================================================ */
 // לדוגמה: /api/v1/rooms/azurea
-router.get("/:slug", getRoomByType);
+router.get("/slug/:slug", getRoomBySlug);
 
 export default router;

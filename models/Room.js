@@ -1,3 +1,4 @@
+// 📁 models/Room.js
 import mongoose from "mongoose";
 
 const ImageSchema = new mongoose.Schema(
@@ -12,7 +13,7 @@ const ImageSchema = new mongoose.Schema(
   { _id: false } // לא נצטרך _id פנימי לכל תמונה
 );
 
-const RoomTypeSchema = new mongoose.Schema(
+const RoomSchema = new mongoose.Schema(
   {
     slug: { type: String, unique: true, index: true },
     title: { type: String, required: true },
@@ -30,10 +31,15 @@ const RoomTypeSchema = new mongoose.Schema(
     // 👇 וכל התמונות גם נשמרות כ-array של אובייקטים
     images: [ImageSchema],
 
+    // 🧾 שדות נוספים
     stock: { type: Number, default: 1 },
     active: { type: Boolean, default: true },
+
+    // 👇 תוספות עתידיות אם יש צורך בקשרי רפרנס (למשל Booking)
+    // bookings: [{ type: mongoose.Schema.Types.ObjectId, ref: "Booking" }],
   },
   { timestamps: true }
 );
 
-export default mongoose.model("RoomType", RoomTypeSchema);
+// ✅ שינוי מוחלט ל־Room
+export default mongoose.model("Room", RoomSchema);
