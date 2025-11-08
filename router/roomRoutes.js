@@ -10,8 +10,7 @@ import {
   createRoom,
   updateRoomById,
   deleteRoomById,
-} from "../controllers/roomController.js"; // ✅ שמנו ברבים
-
+} from "../controllers/roomController.js";
 const router = Router();
 
 /* ============================================================

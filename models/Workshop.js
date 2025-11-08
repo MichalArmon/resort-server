@@ -101,10 +101,22 @@ WorkshopSchema.pre("findOneAndUpdate", function (next) {
     update.slug = slugify(update.title, { lower: true, strict: true });
   }
 
-  // נעדכן את השדה בעדכון
   this.setUpdate(update);
   next();
 });
+
+/* ======================================
+   Virtuals – קישור לכללי חזרתיות (RecurringRule)
+   ====================================== */
+WorkshopSchema.virtual("rules", {
+  ref: "RecurringRule", // שם המודל שאליו נתחבר
+  localField: "_id", // השדה המקומי (ב־Workshop)
+  foreignField: "workshopId", // השדה במודל RecurringRule שמצביע על Workshop
+});
+
+// מוודאים שהווירטואלים נכללים בהמרות ל־JSON / Object
+WorkshopSchema.set("toObject", { virtuals: true });
+WorkshopSchema.set("toJSON", { virtuals: true });
 
 /* ======================================
    ייצוא המודל

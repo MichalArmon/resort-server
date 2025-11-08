@@ -1,4 +1,3 @@
-// 📁 server/models/Booking.js
 import mongoose from "mongoose";
 
 const { Schema, Types } = mongoose;
@@ -7,7 +6,7 @@ const { Schema, Types } = mongoose;
    🔗 מיפוי בין type לשם המודל בפועל (ל-refPath)
    ============================================================ */
 const TYPE_TO_MODEL = {
-  room: "RoomType", // ✅ תואם למודל שלך בפועל
+  room: "Room",
   treatment: "Treatment",
   workshop: "Workshop",
   retreat: "Retreat",
@@ -53,32 +52,27 @@ const BookingSchema = new Schema(
     type: {
       type: String,
       required: true,
-      enum: ["room", "treatment", "workshop", "retreat"], // ✅ תוקן (לא roomType)
+      enum: ["room", "treatment", "workshop", "retreat"],
       default: "room",
     },
 
     /** רפרנס לפריט */
     itemId: {
       type: Types.ObjectId,
-      refPath: "typeRef", // 💥 שימוש דינמי לפי סוג ההזמנה
+      refPath: "typeRef",
       required: true,
     },
 
     /** קובע אוטומטית לפי type */
     typeRef: {
       type: String,
-      enum: Object.values(TYPE_TO_MODEL), // ✅ ["RoomType", "Treatment", "Workshop", "Retreat"]
+      enum: Object.values(TYPE_TO_MODEL),
       required: true,
     },
 
-    /** לסדנאות – מזהה סשן */
-    sessionId: {
-      type: Types.ObjectId,
-      ref: "Session",
-      required: function () {
-        return this.type === "workshop";
-      },
-    },
+    /** לסדנאות – לפי כלל חוזר (RecurringRule) או session */
+    ruleId: { type: Types.ObjectId, ref: "RecurringRule" },
+    sessionId: { type: Types.ObjectId, ref: "Session" },
 
     /** מספר הזמנה ייחודי */
     bookingNumber: {
@@ -92,6 +86,7 @@ const BookingSchema = new Schema(
     checkInDate: Date,
     checkOutDate: Date,
     time: String,
+    studio: String,
 
     /** פרטי אורח */
     guestInfo: {
@@ -159,8 +154,10 @@ BookingSchema.pre("validate", function (next) {
       );
     }
   } else if (this.type === "workshop") {
-    if (!this.sessionId) {
-      return next(new Error("sessionId is required for workshop bookings"));
+    if (!this.sessionId && !this.ruleId) {
+      return next(
+        new Error("ruleId or sessionId is required for workshop bookings")
+      );
     }
   } else {
     if (!this.date) {
