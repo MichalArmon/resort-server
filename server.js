@@ -9,6 +9,7 @@ import express from "express";
 import mongoose from "mongoose";
 import chalk from "chalk";
 import cors from "cors";
+import { startDailySessionJob } from "./cron/generateSessionsDaily.js";
 
 import logger from "./middlewares/logger.js"; // אם קיים
 import serverLogger from "./middlewares/loggerService.js"; // אם קיים
@@ -23,9 +24,10 @@ import uploadsRoutes from "./router/uploadsRoutes.js";
 import workshopsRoutes from "./router/workshopsRoutes.js";
 import treatmentsRoutes from "./router/treatmentsRoutes.js";
 import recurringRulesRoutes from "./router/recurringRulesRoutes.js";
-import scheduleRoutes from "./router/scheduleRoutes.js";
+
 import categoryRoutes from "./router/categoryRoutes.js";
 import userRoutes from "./router/userRoutes.js";
+import sessionRoutes from "./router/sessionRoutes.js";
 
 // (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
 import "./models/User.js";
@@ -96,7 +98,8 @@ app.use("/api/v1/uploads", uploadsRoutes);
 app.use("/api/v1/workshops", workshopsRoutes);
 app.use("/api/v1/treatments", treatmentsRoutes);
 app.use("/api/v1/recurring-rules", recurringRulesRoutes);
-app.use("/api/v1/schedule", scheduleRoutes);
+app.use("/api/v1/sessions", sessionRoutes);
+
 app.use("/api/v1/users", userRoutes);
 
 // ✅ חשוב: הראוטר הכללי תחת /api/v1 חייב להגיע *אחרי* כל הספציפיים
@@ -142,6 +145,7 @@ const start = async () => {
 
     await mongoose.connect(uri);
     console.log(chalk.greenBright("✅ MongoDB connected successfully"));
+    startDailySessionJob();
 
     app.listen(port, () => {
       console.log(

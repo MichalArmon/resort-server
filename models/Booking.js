@@ -154,9 +154,12 @@ BookingSchema.pre("validate", function (next) {
       );
     }
   } else if (this.type === "workshop") {
-    if (!this.sessionId && !this.ruleId) {
+    // 💡 סדנה חוזרת → חייבת ruleId או sessionId
+    if (!this.sessionId && !this.ruleId && !this.date) {
       return next(
-        new Error("ruleId or sessionId is required for workshop bookings")
+        new Error(
+          "Workshop booking requires ruleId/sessionId or a single date if not recurring"
+        )
       );
     }
   } else {

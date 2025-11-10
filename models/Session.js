@@ -1,54 +1,82 @@
+// 📁 models/Session.js
 import mongoose from "mongoose";
 const { Schema, Types } = mongoose;
 
 /**
- * Session = מופע בודד של חוג/סדנה
- * נוצר אוטומטית מתוך RecurringRule או ידנית (oneoff)
+ * Session
+ * ===============================
+ * מייצג מופע יחיד בפועל של סדנה (Workshop)
+ * שנוצר מחוק חוזר (RecurringRule).
+ *
+ * ⏱️ כל השדות נשמרים ב־UTC
+ * 🌏 ומפורשים כלוגית לפי Asia/Bangkok בתצוגה בלבד.
  */
+
 const SessionSchema = new Schema(
   {
-    // קישור ל־Workshop (החוג)
-    workshopId: { type: Types.ObjectId, ref: "Workshop", required: true },
-
-    // קישור לחוק המחזוריות (אם נוצר מחוק כזה)
-    ruleId: { type: Types.ObjectId, ref: "RecurringRule", default: null },
-
-    // פרטים בסיסיים
-    start: { type: Date, required: true },
-    end: { type: Date, required: true },
-
-    // לזיהוי לוגי/פילטרים
-    date: { type: String, required: false }, // YYYY-MM-DD
-    hour: { type: String, required: false }, // HH:00
-    tz: { type: String, default: "Asia/Jerusalem" },
-
-    // זיהוי וניווט
-    workshopSlug: { type: String, default: null },
-    workshopTitle: { type: String, default: null },
-    studio: { type: String, default: "Unassigned" },
-
-    // נתוני תפוסה
-    capacity: { type: Number, default: 12 },
-    booked: { type: Number, default: 0 },
-
-    // סטטוס כללי
-    status: {
-      type: String,
-      enum: ["scheduled", "cancelled", "full"],
-      default: "scheduled",
+    /* הקשר לסדנה */
+    workshopId: {
+      type: Types.ObjectId,
+      ref: "Workshop",
+      required: true,
     },
 
-    // מקור הנתון (rule = ממחזוריות, oneoff = נוצר ידנית)
-    source: {
+    /* החוק שממנו נוצר הסשן */
+    ruleId: {
+      type: Types.ObjectId,
+      ref: "RecurringRule",
+      required: false,
+    },
+
+    /* זמן התחלה (UTC) */
+    start: { type: Date, required: true },
+
+    /* זמן סיום (UTC) */
+    end: { type: Date, required: true },
+
+    /* אזור הזמן – לשימוש בעת המרה ותצוגה בלבד */
+    tz: {
       type: String,
-      enum: ["rule", "oneoff", "recurring"],
-      default: "rule",
+      default: "Asia/Bangkok",
+      immutable: true,
+    },
+
+    /* שדות עזר לצורך שאילתות/תצוגה */
+    date: { type: String }, // YYYY-MM-DD (UTC)
+    hour: { type: String }, // HH:mm (Asia/Bangkok)
+
+    /* פרטי מרצה – לא חובה */
+    instructor: { type: String },
+
+    /* סטודיו או חלל */
+    studio: {
+      type: String,
+      enum: ["Studio A", "Studio B"],
+      default: "Studio A",
+    },
+
+    /* ביטול נקודתי */
+    isCancelled: { type: Boolean, default: false },
+
+    /* קיבולת (max participants) */
+    capacity: { type: Number, default: 20 },
+
+    /* כמה נרשמו בפועל */
+    bookedCount: { type: Number, default: 0 },
+
+    /* סטטוס כללי */
+    status: {
+      type: String,
+      enum: ["scheduled", "full", "cancelled"],
+      default: "scheduled",
     },
   },
   { timestamps: true }
 );
 
-// אינדקס ייחודי כדי למנוע כפילויות — לפי החוג, הסטודיו והזמן
-SessionSchema.index({ workshopId: 1, studio: 1, start: 1 }, { unique: true });
+/* אינדקסים שימושיים */
+SessionSchema.index({ workshopId: 1, start: 1 });
+SessionSchema.index({ ruleId: 1 });
+SessionSchema.index({ start: 1, end: 1 });
 
 export default mongoose.model("Session", SessionSchema);

@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   checkAvailability,
   getQuote,
+  cancelBooking,
   createBooking,
   getUsersBookings,
   getAllBookings,
@@ -28,5 +29,6 @@ router.get("/user", getUsersBookings);
 
 // עדכון סטטוס (למשל Pending → Confirmed)
 router.put("/:id", updateBooking);
+router.patch("/:id/cancel", cancelBooking);
 
 export default router;

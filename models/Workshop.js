@@ -1,4 +1,3 @@
-// 📁 models/Workshop.js
 import mongoose from "mongoose";
 import slugify from "slugify";
 
@@ -50,8 +49,8 @@ const WorkshopSchema = new Schema(
     },
 
     duration: {
-      type: String,
-      default: "60 min",
+      type: Number,
+      default: 60,
     },
 
     level: {
@@ -106,12 +105,21 @@ WorkshopSchema.pre("findOneAndUpdate", function (next) {
 });
 
 /* ======================================
-   Virtuals – קישור לכללי חזרתיות (RecurringRule)
+   Virtuals – קישור לכללי חזרתיות ול־Sessions
    ====================================== */
+
+// כלל חזרתיות (RecurringRule)
 WorkshopSchema.virtual("rules", {
-  ref: "RecurringRule", // שם המודל שאליו נתחבר
-  localField: "_id", // השדה המקומי (ב־Workshop)
-  foreignField: "workshopId", // השדה במודל RecurringRule שמצביע על Workshop
+  ref: "RecurringRule",
+  localField: "_id",
+  foreignField: "workshopId",
+});
+
+// ✅ חיבור לכל המופעים בפועל (Sessions)
+WorkshopSchema.virtual("sessions", {
+  ref: "Session", // שם המודל
+  localField: "_id", // שדה מקומי ב־Workshop
+  foreignField: "workshopId", // שדה במודל Session שמצביע על הסדנה
 });
 
 // מוודאים שהווירטואלים נכללים בהמרות ל־JSON / Object
