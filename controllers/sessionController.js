@@ -1,9 +1,8 @@
+// 📁 server/controllers/sessionController.js
 import Session from "../models/Session.js";
 import Workshop from "../models/Workshop.js";
 import RecurringRule from "../models/RecurringRule.js";
-import moment from "moment-timezone";
-
-const TZ = "Asia/Bangkok";
+import moment from "moment";
 
 /* ============================================================
    📅 GET – שליפת סשנים (עם פילטרים)
@@ -22,22 +21,12 @@ export const getSessions = async (req, res) => {
     if (workshopId) filter.workshopId = workshopId;
     if (status) filter.status = status;
 
+    // 🟢 שליפה פשוטה – מחזירים UTC בלבד
     const sessions = await Session.find(filter).sort({ start: 1 });
 
-    const localized = sessions.map((s) => ({
-      ...s._doc,
-      startLocal: moment
-        .utc(s.start)
-        .tz(s.tz || TZ)
-        .format("YYYY-MM-DD HH:mm"),
-      endLocal: moment
-        .utc(s.end)
-        .tz(s.tz || TZ)
-        .format("YYYY-MM-DD HH:mm"),
-    }));
-
-    res.json(localized);
+    res.json(sessions);
   } catch (err) {
+    console.error("❌ getSessions error:", err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -60,10 +49,10 @@ export const createSession = async (req, res) => {
     const workshop = await Workshop.findById(workshopId);
     if (!workshop) return res.status(404).json({ error: "Workshop not found" });
 
-    const startLocal = moment.tz(start, TZ);
-    const startUtc = startLocal.clone().utc();
+    const startMoment = moment(start);
+    const startUtc = startMoment.clone().utc();
     const endUtc = end
-      ? moment.tz(end, TZ).clone().utc()
+      ? moment(end).clone().utc()
       : startUtc.clone().add(60, "minutes");
 
     const session = await Session.create({
@@ -71,15 +60,14 @@ export const createSession = async (req, res) => {
       start: startUtc.toDate(),
       end: endUtc.toDate(),
       studio: studio || workshop.studio || "Studio A",
-      workshopName: workshop.title, // ✅ שמירה בפועל במונגו
+      workshopName: workshop.title,
       workshopSlug: workshop.slug,
-      dayOfWeek: startLocal.format("dddd"), // ✅ שמירה בפועל במונגו
+      dayOfWeek: startMoment.format("dddd"),
       capacity: capacity || workshop.capacity || 12,
       price: price || workshop.price || 0,
-      date: startLocal.format("YYYY-MM-DD"),
-      hour: startLocal.format("HH:mm"),
+      date: startMoment.format("YYYY-MM-DD"),
+      hour: startMoment.format("HH:mm"),
       source,
-      tz: TZ,
     });
 
     res.status(201).json(session);
@@ -172,11 +160,10 @@ export const generateSessionsFromRules = async (req, res) => {
         const dayOfWeekCode = current.format("dd").toUpperCase().slice(0, 2);
         if (!byDays.includes(dayOfWeekCode)) continue;
 
-        const startLocal = moment.tz(
-          `${current.format("YYYY-MM-DD")}T${rule.startTime}`,
-          TZ
+        const startMoment = moment(
+          `${current.format("YYYY-MM-DD")}T${rule.startTime}`
         );
-        const startUtc = startLocal.clone().utc();
+        const startUtc = startMoment.clone().utc();
         const endUtc = startUtc.clone().add(rule.durationMin || 60, "minutes");
 
         const exists = await Session.exists({
@@ -192,11 +179,10 @@ export const generateSessionsFromRules = async (req, res) => {
           start: startUtc.toDate(),
           end: endUtc.toDate(),
           studio: rule.studio,
-          tz: TZ,
-          date: startLocal.format("YYYY-MM-DD"),
-          hour: startLocal.format("HH:mm"),
-          dayOfWeek: startLocal.format("dddd"), // ✅ יום בשבוע למונגו
-          workshopName: workshop.title, // ✅ שם הסדנה למונגו
+          date: startMoment.format("YYYY-MM-DD"),
+          hour: startMoment.format("HH:mm"),
+          dayOfWeek: startMoment.format("dddd"),
+          workshopName: workshop.title,
           workshopSlug: workshop.slug,
           capacity: workshop.capacity || 12,
           price: rule.price || workshop.price || 0,

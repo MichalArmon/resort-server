@@ -1,13 +1,12 @@
+// 📁 server/controllers/recurringRulesController.js
 import RecurringRule from "../models/RecurringRule.js";
-import moment from "moment-timezone";
+import moment from "moment";
 import pkg from "rrule";
 const { RRule } = pkg;
 
-const TZ = "Asia/Bangkok";
-
 /* ===========================================================
-   🟢 CREATE – יצירת חוק חוזר חדש עם בדיקת חפיפה
-   =========================================================== */
+   🟢 CREATE – יצירת חוק חוזר חדש עם בדיקת חפיפה
+   ========================================================== */
 export const createRecurringRule = async (req, res) => {
   try {
     const {
@@ -25,20 +24,23 @@ export const createRecurringRule = async (req, res) => {
         error:
           "Missing required fields (workshopId, studio, startTime, rrule, effectiveFrom)",
       });
-    } // זמן סיום
+    }
 
+    // זמן סיום
     const [h, m] = startTime.split(":").map(Number);
     const endTime = `${String(h + Math.floor((m + durationMin) / 60)).padStart(
       2,
       "0"
-    )}:${String((m + durationMin) % 60).padStart(2, "0")}`; // כללים קיימים באותו סטודיו
+    )}:${String((m + durationMin) % 60).padStart(2, "0")}`;
 
+    // חוקים קיימים באותו סטודיו
     const existing = await RecurringRule.find({
       studio,
       isActive: true,
       _id: { $ne: req.params?.id || null },
-    }); // יצירת RRULE לפי UTC בלבד
+    });
 
+    // יצירת RRULE לפי UTC בלבד
     let newRule;
     try {
       newRule = new RRule({
@@ -47,8 +49,9 @@ export const createRecurringRule = async (req, res) => {
       });
     } catch {
       return res.status(400).json({ error: "Invalid RRULE format" });
-    } // בדיקת חפיפה עם חוקים אחרים
+    }
 
+    // בדיקת חפיפה עם חוקים אחרים
     for (const rule of existing) {
       let other;
       try {
@@ -90,7 +93,7 @@ export const createRecurringRule = async (req, res) => {
 
     const newDoc = await RecurringRule.create({
       ...req.body,
-      timezone: TZ,
+      timezone: "UTC",
       effectiveFrom: moment.utc(effectiveFrom).toDate(),
       effectiveTo: effectiveTo ? moment.utc(effectiveTo).toDate() : null,
     });
@@ -103,23 +106,23 @@ export const createRecurringRule = async (req, res) => {
 };
 
 /* ===========================================================
-   📖 READ – כל החוקים / לפי סדנה
-   =========================================================== */
+   📖 READ – כל החוקים / לפי סדנה
+   ========================================================== */
 export const getRecurringRules = async (req, res) => {
   try {
     const { workshopId } = req.query;
     const rules = await RecurringRule.find(
       workshopId ? { workshopId } : {}
-    ).populate("workshopId"); // נוסיף גם effectiveFromLocal לתצוגה
+    ).populate("workshopId");
 
+    // הצגה מקומית בלבד
     const localized = rules.map((r) => ({
       ...r._doc,
       effectiveFromLocal: moment
         .utc(r.effectiveFrom)
-        .tz(TZ)
         .format("YYYY-MM-DD HH:mm"),
       effectiveToLocal: r.effectiveTo
-        ? moment.utc(r.effectiveTo).tz(TZ).format("YYYY-MM-DD HH:mm")
+        ? moment.utc(r.effectiveTo).format("YYYY-MM-DD HH:mm")
         : null,
     }));
 
@@ -130,8 +133,8 @@ export const getRecurringRules = async (req, res) => {
 };
 
 /* ===========================================================
-   📘 READ – חוק אחד
-   =========================================================== */
+   📘 READ – חוק אחד
+   ========================================================== */
 export const getRecurringRuleById = async (req, res) => {
   try {
     const rule = await RecurringRule.findById(req.params.id).populate(
@@ -143,10 +146,9 @@ export const getRecurringRuleById = async (req, res) => {
       ...rule._doc,
       effectiveFromLocal: moment
         .utc(rule.effectiveFrom)
-        .tz(TZ)
         .format("YYYY-MM-DD HH:mm"),
       effectiveToLocal: rule.effectiveTo
-        ? moment.utc(rule.effectiveTo).tz(TZ).format("YYYY-MM-DD HH:mm")
+        ? moment.utc(rule.effectiveTo).format("YYYY-MM-DD HH:mm")
         : null,
     });
   } catch (err) {
@@ -155,8 +157,8 @@ export const getRecurringRuleById = async (req, res) => {
 };
 
 /* ===========================================================
-   🛠️ UPDATE – עדכון חוק קיים עם בדיקת חפיפה מחדש
-   =========================================================== */
+   🛠️ UPDATE – עדכון חוק קיים עם בדיקת חפיפה מחדש
+   ========================================================== */
 export const updateRecurringRule = async (req, res) => {
   try {
     const ruleId = req.params.id;
@@ -237,7 +239,7 @@ export const updateRecurringRule = async (req, res) => {
       ruleId,
       {
         ...req.body,
-        timezone: TZ,
+        timezone: "UTC",
         effectiveFrom: moment.utc(effectiveFrom).toDate(),
         effectiveTo: effectiveTo ? moment.utc(effectiveTo).toDate() : null,
       },
@@ -253,8 +255,8 @@ export const updateRecurringRule = async (req, res) => {
 };
 
 /* ===========================================================
-   ❌ DELETE
-   =========================================================== */
+   ❌ DELETE
+   ========================================================== */
 export const deleteRecurringRule = async (req, res) => {
   try {
     await RecurringRule.findByIdAndDelete(req.params.id);
