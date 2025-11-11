@@ -21,6 +21,12 @@ const SessionSchema = new Schema(
       required: true,
     },
 
+    /* שם הסדנה לקריאות בלבד (נשמר בזמן יצירה) */
+    workshopName: {
+      type: String,
+      default: "",
+    },
+
     /* החוק שממנו נוצר הסשן */
     ruleId: {
       type: Types.ObjectId,
@@ -44,6 +50,7 @@ const SessionSchema = new Schema(
     /* שדות עזר לצורך שאילתות/תצוגה */
     date: { type: String }, // YYYY-MM-DD (UTC)
     hour: { type: String }, // HH:mm (Asia/Bangkok)
+    dayOfWeek: { type: String }, // Sunday / Monday וכו'
 
     /* פרטי מרצה – לא חובה */
     instructor: { type: String },

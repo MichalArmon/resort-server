@@ -6,8 +6,8 @@ import moment from "moment-timezone";
 const TZ = "Asia/Bangkok";
 
 /* ============================================================
-   📅 GET – שליפת סשנים (עם פילטרים)
-   ============================================================ */
+   📅 GET – שליפת סשנים (עם פילטרים)
+   ============================================================ */
 export const getSessions = async (req, res) => {
   try {
     const { start, end, studio, workshopId, status } = req.query;
@@ -22,7 +22,7 @@ export const getSessions = async (req, res) => {
     if (workshopId) filter.workshopId = workshopId;
     if (status) filter.status = status;
 
-    const sessions = await Session.find(filter).sort({ start: 1 }); // המרה מקומית רק לתצוגה בפרונט
+    const sessions = await Session.find(filter).sort({ start: 1 });
 
     const localized = sessions.map((s) => ({
       ...s._doc,
@@ -43,14 +43,14 @@ export const getSessions = async (req, res) => {
 };
 
 /* ============================================================
-   ➕ POST – יצירת סשן ידני
-   ============================================================ */
+   ➕ POST – יצירת סשן ידני
+   ============================================================ */
 export const createSession = async (req, res) => {
   try {
     const {
       workshopId,
-      start, // מחרוזת תאריך ושעה
-      end, // מחרוזת תאריך ושעה
+      start,
+      end,
       studio,
       capacity,
       price,
@@ -58,25 +58,26 @@ export const createSession = async (req, res) => {
     } = req.body;
 
     const workshop = await Workshop.findById(workshopId);
-    if (!workshop) return res.status(404).json({ error: "Workshop not found" }); // 🟢 תיקון: מפרשים את ה-start/end כ-TZ (Asia/Bangkok) לפני שממירים ל-UTC
+    if (!workshop) return res.status(404).json({ error: "Workshop not found" });
 
     const startLocal = moment.tz(start, TZ);
-    const startUtc = startLocal.clone().utc(); // ממיר 08:00 TZ ל-01:00 UTC (הנכון)
+    const startUtc = startLocal.clone().utc();
     const endUtc = end
       ? moment.tz(end, TZ).clone().utc()
       : startUtc.clone().add(60, "minutes");
 
     const session = await Session.create({
       workshopId,
-      start: startUtc.toDate(), // שמירת ה-UTC הנכון
+      start: startUtc.toDate(),
       end: endUtc.toDate(),
       studio: studio || workshop.studio || "Studio A",
-      workshopTitle: workshop.title,
+      workshopName: workshop.title, // ✅ שמירה בפועל במונגו
       workshopSlug: workshop.slug,
+      dayOfWeek: startLocal.format("dddd"), // ✅ שמירה בפועל במונגו
       capacity: capacity || workshop.capacity || 12,
       price: price || workshop.price || 0,
       date: startLocal.format("YYYY-MM-DD"),
-      hour: startLocal.format("HH:mm"), // שמירת השעה המקומית הנכונה (08:00)
+      hour: startLocal.format("HH:mm"),
       source,
       tz: TZ,
     });
@@ -88,8 +89,8 @@ export const createSession = async (req, res) => {
 };
 
 /* ============================================================
-   🛠️ PUT – עדכון סשן
-   ============================================================ */
+   🛠️ PUT – עדכון סשן
+   ============================================================ */
 export const updateSession = async (req, res) => {
   try {
     const session = await Session.findByIdAndUpdate(req.params.id, req.body, {
@@ -104,8 +105,8 @@ export const updateSession = async (req, res) => {
 };
 
 /* ============================================================
-   ❌ DELETE – מחיקת סשן
-   ============================================================ */
+   ❌ DELETE – מחיקת סשן
+   ============================================================ */
 export const deleteSession = async (req, res) => {
   try {
     const session = await Session.findByIdAndDelete(req.params.id);
@@ -117,8 +118,8 @@ export const deleteSession = async (req, res) => {
 };
 
 /* ============================================================
-   🔄 PATCH – עדכון תפוסה
-   ============================================================ */
+   🔄 PATCH – עדכון תפוסה
+   ============================================================ */
 export const updateCapacity = async (req, res) => {
   try {
     const { bookedCount, capacity } = req.body;
@@ -139,8 +140,8 @@ export const updateCapacity = async (req, res) => {
 };
 
 /* ============================================================
-   🪄 POST – ייצור סשנים אוטומטית מתוך חוקים חוזרים
-   ============================================================ */
+   🪄 POST – ייצור סשנים אוטומטית מתוך חוקים חוזרים
+   ============================================================ */
 export const generateSessionsFromRules = async (req, res) => {
   try {
     const now = moment.utc().startOf("day");
@@ -168,21 +169,20 @@ export const generateSessionsFromRules = async (req, res) => {
         current.isSameOrBefore(to) && current.isSameOrBefore(until);
         current.add(1, "day")
       ) {
-        const dayOfWeek = current.format("dd").toUpperCase().slice(0, 2);
-        if (!byDays.includes(dayOfWeek)) continue; // 1. יוצרים את השעה המקומית (08:00 TZ)
+        const dayOfWeekCode = current.format("dd").toUpperCase().slice(0, 2);
+        if (!byDays.includes(dayOfWeekCode)) continue;
 
         const startLocal = moment.tz(
           `${current.format("YYYY-MM-DD")}T${rule.startTime}`,
           TZ
         );
-        // 2. 🟢 התיקון: ממירים ל-UTC לצורך שמירה. זה ממיר 08:00 TZ ל-01:00 UTC.
         const startUtc = startLocal.clone().utc();
         const endUtc = startUtc.clone().add(rule.durationMin || 60, "minutes");
 
         const exists = await Session.exists({
           workshopId: workshop._id,
           studio: rule.studio,
-          start: startUtc.toDate(), // שמירה ב-UTC הנכון
+          start: startUtc.toDate(),
         });
         if (exists) continue;
 
@@ -194,8 +194,9 @@ export const generateSessionsFromRules = async (req, res) => {
           studio: rule.studio,
           tz: TZ,
           date: startLocal.format("YYYY-MM-DD"),
-          hour: startLocal.format("HH:mm"), // שמירת השעה המקומית (08:00)
-          workshopTitle: workshop.title,
+          hour: startLocal.format("HH:mm"),
+          dayOfWeek: startLocal.format("dddd"), // ✅ יום בשבוע למונגו
+          workshopName: workshop.title, // ✅ שם הסדנה למונגו
           workshopSlug: workshop.slug,
           capacity: workshop.capacity || 12,
           price: rule.price || workshop.price || 0,
