@@ -1,7 +1,6 @@
-// ✅ 0) קובע אזור זמן *לפני כל import*
-// זה פותר היסטים בתאריכים/שעות בכל הקוד (RRULE, Date וכו').
-process.env.TZ = "Asia/Jerusalem";
-
+// ============================================================
+// 🌿 Imports
+// ============================================================
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -84,22 +83,18 @@ app.get("/health", (_req, res) => res.json({ ok: true, ts: Date.now() }));
 
 /* ============================================================
  *  Routes (/api/v1)
- *  סדר חשוב:
- *  1) ראוטים ספציפיים (schedule, recurring-rules, workshops וכו')
- *  2) *אחרון* – ה"router" הכללי תחת /api/v1 כדי שלא יבלע ראוטים ספציפיים
  * ============================================================ */
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/retreats", retreatRoutes);
-app.use("/api/v1/retreat", retreatRoutes); // אליאס ישן "retret" אם יש קריאות ישנות
+app.use("/api/v1/retreat", retreatRoutes); // אליאס ישן "retret"
 app.use("/api/v1/rooms", roomRoutes);
 app.use("/api/v1/uploads", uploadsRoutes);
 app.use("/api/v1/workshops", workshopsRoutes);
 app.use("/api/v1/treatments", treatmentsRoutes);
 app.use("/api/v1/recurring-rules", recurringRulesRoutes);
 app.use("/api/v1/sessions", sessionRoutes);
-
 app.use("/api/v1/users", userRoutes);
 
 // ✅ חשוב: הראוטר הכללי תחת /api/v1 חייב להגיע *אחרי* כל הספציפיים
