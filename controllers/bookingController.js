@@ -257,7 +257,7 @@ export const createBooking = async (req, res) => {
         .json({ message: "Missing required booking parameters." });
 
     const typeRef = mapTypeToRef(type);
-    const bookingNumber = genBookingNumber(); // 1️⃣ חיפוש/יצירת יוזר לפי האימייל של האורח
+    const bookingNumber = genBookingNumber();
 
     let user = await User.findOne({ email: guestInfo.email });
     if (!user) {
@@ -269,7 +269,7 @@ export const createBooking = async (req, res) => {
         loginType: "local",
       });
       console.log("✨ Created new user from booking:", user.email);
-    } // 2️⃣ יצירת ההזמנה עם קישור ליוזר
+    }
 
     const bookingDoc = new Booking({
       type,
@@ -289,35 +289,30 @@ export const createBooking = async (req, res) => {
     });
 
     await bookingDoc.save();
-    console.log("✅ Booking created:", bookingNumber); // 3️⃣ עדכון מלאי - 🟢 התיקון הסופי למלאי Workshop
+    console.log("✅ Booking created:", bookingNumber);
 
     try {
       if (type === "room") {
         await RoomType.findByIdAndUpdate(itemId, { $inc: { stock: -1 } });
       } else if (type === "workshop") {
         if (sessionId) {
-          // 1. בדיקה ראשונית: קוראים את המלאי הנוכחי (לא אטומי)
           const s = await Session.findById(sessionId).select(
             "capacity bookedCount"
-          ); // 🚨 תנאי ראשוני: אם אין מקום, נזרק שגיאה לפני העדכון.
+          );
           if (!s || s.capacity - s.bookedCount < guestCount) {
             throw new Error(`Seats not available or session not found.`);
-          } // 2. 🟢 התיקון: שימוש ב-findByIdAndUpdate עם $inc פשוט (לא נשתמש ב-$where)
+          }
           const updateResult = await Session.findByIdAndUpdate(
             sessionId,
-            {
-              $inc: { bookedCount: guestCount }, // 👈 הדרך החוקית לעדכן מלאי
-            },
+            { $inc: { bookedCount: guestCount } },
             { new: true }
           );
 
           if (updateResult) {
-            // אם העדכון הצליח, בודקים אם הפך למלא
             if (updateResult.bookedCount >= updateResult.capacity) {
               await Session.findByIdAndUpdate(sessionId, { status: "full" });
             }
           } else {
-            // אם לא נמצא, זה נכשל ב-findByIdAndUpdate
             throw new Error("Session ID not found during update.");
           }
         }
@@ -328,69 +323,69 @@ export const createBooking = async (req, res) => {
       }
       console.log("📦 Capacity updated for:", type);
     } catch (err) {
-      console.warn("⚠️ Capacity update failed:", err.message); // 🚨 תיקון Rollback: שימוש ב-deleteOne במקום remove()
+      console.warn("⚠️ Capacity update failed:", err.message);
       await Booking.deleteOne({ _id: bookingDoc._id });
       return res
         .status(400)
         .json({ message: err.message || "Failed to reserve seats." });
-    } // 4️⃣ שליחת מייל ללקוח (נשאר זהה)
-
-    try {
-      console.log("📧 Sending confirmation to:", guestInfo.email);
-      const transporter = nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: process.env.GMAIL_USER,
-          pass: process.env.GMAIL_PASS,
-        },
-      });
-
-      const htmlEmail = `
-      <div style="font-family: Arial; background-color: #f6f9f8; padding: 40px;">
-        <table width="100%" style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;">
-          <tr><td style="background:#22615C;color:#fff;text-align:center;padding:20px;">
-            <h2>Ban Tao Resort</h2>
-          </td></tr>
-          <tr><td style="padding:24px;color:#333;">
-            <h3>Thank you, ${guestInfo.fullName} 🌴</h3>
-            <p>Your booking <b>#${bookingNumber}</b> is confirmed.</p>
-            <p><b>Type:</b> ${type}</p>
-            ${
-        checkInDate
-          ? `<p><b>Check-in:</b> ${new Date(
-              checkInDate
-            ).toLocaleDateString()}</p>`
-          : ""
-      }
-            ${
-        checkOutDate
-          ? `<p><b>Check-out:</b> ${new Date(
-              checkOutDate
-            ).toLocaleDateString()}</p>`
-          : ""
-      }
-            <p><b>Total Price:</b> ${totalPrice || "TBD"} ฿</p>
-          </td></tr>
-        </table>
-      </div>`;
-
-      await transporter.sendMail({
-        from: `"Ban Tao Resort" <${process.env.GMAIL_USER}>`,
-        to: guestInfo.email,
-        subject: `🌴 Booking Confirmation (${bookingNumber})`,
-        html: htmlEmail,
-      });
-
-      console.log("✅ Email sent successfully.");
-    } catch (err) {
-      console.error("❌ Email send error:", err.message);
     }
 
-    return res.status(201).json({
+    // ✅ שינוי כאן בלבד — שולח תשובה מיידית ולא מחכה ל-sendMail
+    console.log("📧 Sending confirmation to:", guestInfo.email);
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS,
+      },
+    });
+
+    const htmlEmail = `
+      <div style="font-family: Arial; background-color: #f6f9f8; padding: 40px;">
+        <table width="100%" style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;">
+          <tr><td style="background:#22615C;color:#fff;text-align:center;padding:20px;">
+            <h2>Ban Tao Resort</h2>
+          </td></tr>
+          <tr><td style="padding:24px;color:#333;">
+            <h3>Thank you, ${guestInfo.fullName} 🌴</h3>
+            <p>Your booking <b>#${bookingNumber}</b> is confirmed.</p>
+            <p><b>Type:</b> ${type}</p>
+            ${
+              checkInDate
+                ? `<p><b>Check-in:</b> ${new Date(
+                    checkInDate
+                  ).toLocaleDateString()}</p>`
+                : ""
+            }
+            ${
+              checkOutDate
+                ? `<p><b>Check-out:</b> ${new Date(
+                    checkOutDate
+                  ).toLocaleDateString()}</p>`
+                : ""
+            }
+            <p><b>Total Price:</b> ${totalPrice || "TBD"} ฿</p>
+          </td></tr>
+        </table>
+      </div>`;
+
+    // 🟢 שולח תגובה מיד לפרונט כדי לעצור את הספינר
+    res.status(201).json({
       message: "Booking created successfully",
       booking: bookingDoc,
       user,
     });
+
+    // ✉️ שולח מייל ברקע (לא חוסם את הבקשה)
+    transporter
+      .sendMail({
+        from: `"Ban Tao Resort" <${process.env.GMAIL_USER}>`,
+        to: guestInfo.email,
+        subject: `🌴 Booking Confirmation (${bookingNumber})`,
+        html: htmlEmail,
+      })
+      .then(() => console.log("✅ Email sent successfully."))
+      .catch((err) => console.error("❌ Email send error:", err.message));
   } catch (err) {
     console.error("Error creating booking:", err);
     return res.status(500).json({ message: "Server error during booking." });
