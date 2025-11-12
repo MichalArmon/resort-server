@@ -328,63 +328,81 @@ export const createBooking = async (req, res) => {
     try {
       console.log("📧 Sending confirmation to:", guestInfo.email);
 
+      // שולחים ללקוח תשובה מיידית כדי לא לחסום את הפרונט!
+      res.status(201).json({
+        message: "Booking created successfully",
+        booking: bookingDoc,
+        user,
+      });
+
+      // 👇 מפה ואילך — נשלח את המייל "מאחורי הקלעים" (לא מחכה)
       const htmlEmail = `
-        <div style="font-family: Arial; background-color: #f6f9f8; padding: 40px;">
-          <table width="100%" style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;">
-            <tr><td style="background:#22615C;color:#fff;text-align:center;padding:20px;">
-              <h2>Ban Tao Resort</h2>
-            </td></tr>
-            <tr><td style="padding:24px;color:#333;">
-              <h3>Thank you, ${guestInfo.fullName} 🌴</h3>
-              <p>Your booking <b>#${bookingNumber}</b> is confirmed.</p>
-              <p><b>Type:</b> ${type}</p>
-              ${
-                checkInDate
-                  ? `<p><b>Check-in:</b> ${new Date(
-                      checkInDate
-                    ).toLocaleDateString()}</p>`
-                  : ""
-              }
-              ${
-                checkOutDate
-                  ? `<p><b>Check-out:</b> ${new Date(
-                      checkOutDate
-                    ).toLocaleDateString()}</p>`
-                  : ""
-              }
-              <p><b>Total Price:</b> ${totalPrice || "TBD"} ฿</p>
-            </td></tr>
-          </table>
-        </div>`;
+    <div style="font-family: Arial; background-color: #f6f9f8; padding: 40px;">
+      <table width="100%" style="max-width:600px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;">
+        <tr><td style="background:#22615C;color:#fff;text-align:center;padding:20px;">
+          <h2>Ban Tao Resort</h2>
+        </td></tr>
+        <tr><td style="padding:24px;color:#333;">
+          <h3>Thank you, ${guestInfo.fullName} 🌴</h3>
+          <p>Your booking <b>#${bookingNumber}</b> is confirmed.</p>
+          <p><b>Type:</b> ${type}</p>
+          ${
+            checkInDate
+              ? `<p><b>Check-in:</b> ${new Date(
+                  checkInDate
+                ).toLocaleDateString()}</p>`
+              : ""
+          }
+          ${
+            checkOutDate
+              ? `<p><b>Check-out:</b> ${new Date(
+                  checkOutDate
+                ).toLocaleDateString()}</p>`
+              : ""
+          }
+          <p><b>Total Price:</b> ${totalPrice || "TBD"} ฿</p>
+        </td></tr>
+      </table>
+    </div>`;
 
-      if (process.env.RESEND_API_KEY) {
-        const resend = new Resend(process.env.RESEND_API_KEY);
-        await resend.emails.send({
-          from: "Ban Tao <no-reply@resend.dev>",
-          to: guestInfo.email,
-          subject: `🌴 Booking Confirmation (${bookingNumber})`,
-          html: htmlEmail,
-        });
-        console.log("✅ Email sent successfully via Resend");
-      } else {
-        const transporter = nodemailer.createTransport({
-          service: "gmail",
-          auth: {
-            user: process.env.GMAIL_USER,
-            pass: process.env.GMAIL_PASS,
-          },
-        });
+      // שולחים אחרי התגובה
+      setImmediate(async () => {
+        try {
+          if (process.env.RESEND_API_KEY) {
+            const resend = new Resend(process.env.RESEND_API_KEY);
+            await resend.emails.send({
+              from: "Ban Tao <no-reply@resend.dev>",
+              to: guestInfo.email,
+              subject: `🌴 Booking Confirmation (${bookingNumber})`,
+              html: htmlEmail,
+            });
+            console.log("✅ Email sent successfully via Resend (background)");
+          } else {
+            const transporter = nodemailer.createTransport({
+              service: "gmail",
+              auth: {
+                user: process.env.GMAIL_USER,
+                pass: process.env.GMAIL_PASS,
+              },
+            });
 
-        await transporter.sendMail({
-          from: `"Ban Tao Resort" <${process.env.GMAIL_USER}>`,
-          to: guestInfo.email,
-          subject: `🌴 Booking Confirmation (${bookingNumber})`,
-          html: htmlEmail,
-        });
-        console.log("✅ Email sent successfully via Gmail");
-      }
+            await transporter.sendMail({
+              from: `"Ban Tao Resort" <${process.env.GMAIL_USER}>`,
+              to: guestInfo.email,
+              subject: `🌴 Booking Confirmation (${bookingNumber})`,
+              html: htmlEmail,
+            });
+            console.log("✅ Email sent successfully via Gmail (background)");
+          }
+        } catch (err) {
+          console.error("❌ Email send error (background):", err.message);
+        }
+      });
+
+      return; // כבר שלחנו תשובה
     } catch (err) {
       console.error("❌ Email send error:", err.message);
+      // רק אם נכשלה יצירת ה-res.json נגיע לכאן
     }
 
     return res.status(201).json({
