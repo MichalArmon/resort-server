@@ -1,5 +1,5 @@
 // 📁 server/controllers/bookingController.js
-
+import { Resend } from "resend";
 import Booking from "../models/Booking.js";
 import RoomType from "../models/Room.js";
 import Retreat from "../models/Retreat.js";
@@ -358,7 +358,6 @@ export const createBooking = async (req, res) => {
         </div>`;
 
       if (process.env.RESEND_API_KEY) {
-        const { Resend } = await import("resend");
         const resend = new Resend(process.env.RESEND_API_KEY);
         await resend.emails.send({
           from: "Ban Tao <no-reply@resend.dev>",
@@ -470,7 +469,6 @@ export const cancelBooking = async (req, res) => {
         </div>`;
 
       if (process.env.RESEND_API_KEY) {
-        const { Resend } = await import("resend");
         const resend = new Resend(process.env.RESEND_API_KEY);
         await resend.emails.send({
           from: "Ban Tao <no-reply@resend.dev>",
