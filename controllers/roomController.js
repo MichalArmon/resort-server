@@ -232,3 +232,49 @@ export const deleteRoomById = async (req, res) => {
     res.status(500).json({ message: "Failed to delete room" });
   }
 };
+
+/* ============================================================
+   📅 GET — Room availability (by slug + date range)
+   ============================================================ */
+/* ============================================================
+   📅 GET — Room availability (by slug + date range)
+   ============================================================ */
+export const getRoomAvailability = async (req, res) => {
+  try {
+    const { room, checkIn, checkOut } = req.query;
+
+    if (!room || !checkIn || !checkOut) {
+      return res.status(400).json({
+        message: "Missing room, checkIn, or checkOut",
+      });
+    }
+
+    // ✅ חיפוש לפי slug
+    const found = await Room.findOne({ slug: room, active: true });
+    if (!found) {
+      return res.status(404).json({ message: `Room not found: ${room}` });
+    }
+
+    // 🧩 בדיקת זמינות (בינתיים מדומה)
+    const isAvailable = true; // בעתיד אפשר לבדוק לפי Bookings
+
+    // 🧠 המרה לפורמט מלא (כולל תמונות, מחיר וכו’)
+    const fullData = toUI(found);
+
+    // 💫 מוסיפים את נתוני הזמינות
+    const response = {
+      ...fullData,
+      available: isAvailable,
+      checkIn,
+      checkOut,
+    };
+
+    res.json(response);
+  } catch (e) {
+    console.error("getRoomAvailability error:", e);
+    res.status(500).json({
+      message: "Failed to fetch room availability",
+      error: e.message,
+    });
+  }
+};

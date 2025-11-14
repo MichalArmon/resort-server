@@ -48,7 +48,7 @@ router.get("/upcoming", async (req, res, next) => {
 });
 
 /* ---------- מפת חודש (לצביעת לוח) ---------- */
-router.get("/monthly-map", getMonthlyRetreats);
+router.get("/monthly", getMonthlyRetreats);
 router.get("/calendar", getCalendarDays);
 
 /* ---------- CRUD בסיסי ---------- */

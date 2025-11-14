@@ -61,6 +61,7 @@ export async function getMonthlyRetreats(req, res, next) {
   try {
     const year = Number(req.query.year) || moment().year();
     const month = Number(req.query.month) || moment().month() + 1;
+
     const monthStart = moment(`${year}-${String(month).padStart(2, "0")}-01`);
     const monthEnd = monthStart.clone().endOf("month");
 
@@ -70,18 +71,22 @@ export async function getMonthlyRetreats(req, res, next) {
       endDate: { $gte: monthStart.toDate() },
     })
       .populate("category", "name color")
-      .select("_id name type startDate endDate price category");
+      .select("_id name slug startDate endDate price category");
 
     const map = {};
+
     for (const r of docs) {
       const color = r.category?.color || "#66bb6a";
+      const slug = r.slug;
+
       for (const iso of eachDayISO(r.startDate, r.endDate)) {
         if (!map[iso]) map[iso] = [];
+
         map[iso].push({
           _id: r._id,
           name: r.name,
-          type: r.type,
-          color,
+          slug, // ⬅️ חובה!
+          color, // ⬅️ צבע לפי קטגוריה
           category: r.category?.name,
           price: r.price,
         });
@@ -110,23 +115,26 @@ export async function getCalendarDays(req, res, next) {
       endDate: { $gte: from.toDate() },
     })
       .populate("category", "name color")
-      .select("_id name type startDate endDate price category");
+      .select("_id name slug startDate endDate price category");
 
     const map = new Map();
     for (const iso of eachDayISO(from, to)) map.set(iso, []);
 
     for (const r of docs) {
       const color = r.category?.color || "#66bb6a";
+      const slug = r.slug;
+
       const inRangeDays = eachDayISO(
         moment.max(moment(r.startDate), from),
         moment.min(moment(r.endDate), to)
       );
+
       for (const iso of inRangeDays) {
         map.get(iso)?.push({
           _id: r._id,
           name: r.name,
-          type: r.type,
-          color,
+          slug, // ⬅️ חובה!
+          color, // ⬅️ צבע לפי קטגוריה
           category: r.category?.name,
           price: r.price,
         });
@@ -344,7 +352,7 @@ export async function getGuestSchedule(req, res, next) {
     res.json({
       id: doc._id,
       name: doc.name,
-      type: doc.type,
+
       category: doc.category,
       color: doc.category?.color || "#66bb6a",
       startDate: doc.startDate,

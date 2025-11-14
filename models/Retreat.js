@@ -26,7 +26,6 @@ const RetreatSchema = new mongoose.Schema(
     category: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
 
     // עיצוב / מדיה
-    color: { type: String },
     hero: { type: ImageSchema, default: {} },
     gallery: { type: [ImageSchema], default: [] },
 
@@ -40,13 +39,13 @@ const RetreatSchema = new mongoose.Schema(
     isClosed: { type: Boolean, default: false },
     published: { type: Boolean, default: false },
 
-    // 🔗 קישור רך לימים של הריטריט (RetreatDay)
+    // 🔗 קישור לימים (אם בחרת להפעיל לוח-פעילות)
     days: [{ type: mongoose.Schema.Types.ObjectId, ref: "RetreatDay" }],
   },
   { timestamps: true }
 );
 
-// 🧠 יצירת slug אוטומטי לפי השם
+// 🧠 יצירת slug אוטומטי
 RetreatSchema.pre("save", function (next) {
   if (!this.slug) {
     const base = this.name || "retreat";

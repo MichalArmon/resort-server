@@ -9,10 +9,7 @@ const CategorySchema = new Schema(
       required: true,
       trim: true,
     },
-    color: {
-      type: String,
-      default: "#6ab04c",
-    },
+    category: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
     types: {
       type: [String],
       enum: ["workshop", "retreat", "treatment", "room"],
