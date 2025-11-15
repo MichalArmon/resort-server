@@ -243,28 +243,41 @@ export const getRoomAvailability = async (req, res) => {
   try {
     const { room, checkIn, checkOut } = req.query;
 
-    if (!room || !checkIn || !checkOut) {
+    // ⛔ חובה שיהיו תאריכים, אבל room יכול להיות ANY
+    if (!checkIn || !checkOut) {
       return res.status(400).json({
-        message: "Missing room, checkIn, or checkOut",
+        message: "Missing checkIn or checkOut",
       });
     }
 
-    // ✅ חיפוש לפי slug
+    // 🟢 מצב ANY – מחזירים את כל החדרים
+    if (!room || room === "any") {
+      const rooms = await Room.find({ active: true });
+
+      const list = rooms.map((r) => ({
+        ...toUI(r),
+        available: true, // בעתיד לפי הזמנות בפועל
+        checkIn,
+        checkOut,
+      }));
+
+      return res.json({
+        message: "All rooms availability",
+        rooms: list,
+      });
+    }
+
+    // 🟢 מצב חדר ספציפי
     const found = await Room.findOne({ slug: room, active: true });
     if (!found) {
       return res.status(404).json({ message: `Room not found: ${room}` });
     }
 
-    // 🧩 בדיקת זמינות (בינתיים מדומה)
-    const isAvailable = true; // בעתיד אפשר לבדוק לפי Bookings
-
-    // 🧠 המרה לפורמט מלא (כולל תמונות, מחיר וכו’)
     const fullData = toUI(found);
 
-    // 💫 מוסיפים את נתוני הזמינות
     const response = {
       ...fullData,
-      available: isAvailable,
+      available: true,
       checkIn,
       checkOut,
     };

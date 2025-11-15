@@ -88,7 +88,7 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/categories", categoryRoutes);
 app.use("/api/v1/bookings", bookingRoutes);
 app.use("/api/v1/retreats", retreatRoutes);
-app.use("/api/v1/retreat", retreatRoutes); // אליאס ישן "retret"
+
 app.use("/api/v1/rooms", roomRoutes);
 app.use("/api/v1/uploads", uploadsRoutes);
 app.use("/api/v1/workshops", workshopsRoutes);

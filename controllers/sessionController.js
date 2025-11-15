@@ -2,10 +2,25 @@
 import Session from "../models/Session.js";
 import Workshop from "../models/Workshop.js";
 import RecurringRule from "../models/RecurringRule.js";
+import Booking from "../models/Booking.js";
+
 import moment from "moment";
+
+// ✅ פונקציה שמחזירה כמה אנשים באמת נרשמו לסשן
+async function getBookedCount(sessionId) {
+  try {
+    return await Booking.countDocuments({ sessionId });
+  } catch (e) {
+    console.error("❌ getBookedCount failed:", e);
+    return 0;
+  }
+}
 
 /* ============================================================
    📅 GET – שליפת סשנים (עם פילטרים)
+   ============================================================ */
+/* ============================================================
+   📅 GET – שליפת סשנים (עם פילטרים) + זמינות
    ============================================================ */
 export const getSessions = async (req, res) => {
   try {
@@ -17,14 +32,41 @@ export const getSessions = async (req, res) => {
         $gte: moment.utc(start).toDate(),
         $lte: moment.utc(end).toDate(),
       };
+
     if (studio) filter.studio = studio;
     if (workshopId) filter.workshopId = workshopId;
     if (status) filter.status = status;
 
-    // 🟢 שליפה פשוטה – מחזירים UTC בלבד
+    // 🟢 שליפה פשוטה
     const sessions = await Session.find(filter).sort({ start: 1 });
 
-    res.json(sessions);
+    // 🧠 החזרת נתונים עם לוקאליות + זמינות
+    const enriched = await Promise.all(
+      sessions.map(async (s) => {
+        const startLocal = moment(s.start).format();
+        const endLocal = moment(s.end).format();
+
+        const capacity = s.capacity ?? 0;
+
+        // ⭐ כאן זה עובד — await בתוך map async
+        const bookedCount = await getBookedCount(s._id);
+
+        const remaining = Math.max(0, capacity - bookedCount);
+        const status = remaining > 0 ? "available" : "full";
+
+        return {
+          ...s._doc,
+          startLocal,
+          endLocal,
+          capacity,
+          bookedCount,
+          remaining,
+          status,
+        };
+      })
+    );
+
+    res.json(enriched);
   } catch (err) {
     console.error("❌ getSessions error:", err);
     res.status(500).json({ error: err.message });
@@ -186,7 +228,7 @@ export const generateSessionsFromRules = async (req, res) => {
           workshopSlug: workshop.slug,
           capacity: workshop.capacity || 12,
           price: rule.price || workshop.price || 0,
-          booked: 0,
+          bookedCount: 0,
           status: "scheduled",
           source: "recurring",
         });
@@ -199,5 +241,41 @@ export const generateSessionsFromRules = async (req, res) => {
     res.json({ success: true, createdCount, summary });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+};
+/* ============================================================
+   🎯 GET – זמינות של סשן יחיד לפי ID
+   ------------------------------------------------------------
+   GET /api/v1/sessions/:id/availability
+   ============================================================ */
+export const getSessionAvailability = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const session = await Session.findById(id);
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+
+    const capacity = session.capacity ?? 0;
+    const booked = session.bookedCount ?? session.booked ?? 0;
+    const remaining = Math.max(0, capacity - booked);
+
+    return res.json({
+      sessionId: id,
+      workshopId: session.workshopId,
+      capacity,
+      booked,
+      remaining,
+      status: remaining > 0 ? "available" : "full",
+      start: session.start,
+      end: session.end,
+    });
+  } catch (err) {
+    console.error("❌ getSessionAvailability error:", err);
+    res.status(500).json({
+      message: "Failed to check session availability",
+      error: err.message,
+    });
   }
 };

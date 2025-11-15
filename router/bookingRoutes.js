@@ -1,6 +1,5 @@
 import { Router } from "express";
 import {
-  checkAvailability,
   getQuote,
   cancelBooking,
   createBooking,
@@ -14,7 +13,7 @@ const router = Router();
 /* ===========================
    🧭 Public endpoints
    =========================== */
-router.get("/availability", checkAvailability);
+
 router.post("/quote", getQuote);
 router.post("/", createBooking);
 
