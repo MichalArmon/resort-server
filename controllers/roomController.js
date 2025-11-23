@@ -1,5 +1,6 @@
 // 📁 server/controllers/roomsController.js
 import Room from "../models/Room.js";
+import Booking from "../models/Booking.js";
 
 /* ============================================================
    🧩 Helpers
@@ -232,62 +233,138 @@ export const deleteRoomById = async (req, res) => {
     res.status(500).json({ message: "Failed to delete room" });
   }
 };
-
 /* ============================================================
-   📅 GET — Room availability (by slug + date range)
+   🏨 GET — Availability check for rooms
    ============================================================ */
-/* ============================================================
-   📅 GET — Room availability (by slug + date range)
-   ============================================================ */
-export const getRoomAvailability = async (req, res) => {
+export const checkAvailability = async (req, res) => {
   try {
-    const { room, checkIn, checkOut } = req.query;
-
-    // ⛔ חובה שיהיו תאריכים, אבל room יכול להיות ANY
-    if (!checkIn || !checkOut) {
-      return res.status(400).json({
-        message: "Missing checkIn or checkOut",
-      });
-    }
-
-    // 🟢 מצב ANY – מחזירים את כל החדרים
-    if (!room || room === "any") {
-      const rooms = await Room.find({ active: true });
-
-      const list = rooms.map((r) => ({
-        ...toUI(r),
-        available: true, // בעתיד לפי הזמנות בפועל
-        checkIn,
-        checkOut,
-      }));
-
-      return res.json({
-        message: "All rooms availability",
-        rooms: list,
-      });
-    }
-
-    // 🟢 מצב חדר ספציפי
-    const found = await Room.findOne({ slug: room, active: true });
-    if (!found) {
-      return res.status(404).json({ message: `Room not found: ${room}` });
-    }
-
-    const fullData = toUI(found);
-
-    const response = {
-      ...fullData,
-      available: true,
+    const {
       checkIn,
       checkOut,
+      guests,
+      rooms,
+      roomType: roomTypeParam,
+    } = req.query;
+
+    if (!checkIn || !checkOut || !guests || !rooms) {
+      return res.status(400).json({
+        message: "Check-in, Check-out, guests, and rooms are required.",
+      });
+    }
+
+    const checkInDate = new Date(checkIn);
+    const checkOutDate = new Date(checkOut);
+    const requiredGuests = parseInt(guests, 10);
+    const requiredRooms = parseInt(rooms, 10);
+    const minCapacityPerRoom = Math.ceil(requiredGuests / requiredRooms);
+
+    /* ----------------------------------------
+       1) Filter rooms by capacity / type / active
+       ---------------------------------------- */
+    const filter = {
+      active: true,
+      $or: [
+        { maxGuests: { $gte: minCapacityPerRoom } },
+        { maxGuests: { $exists: false } },
+        { maxGuests: null },
+      ],
     };
 
-    res.json(response);
-  } catch (e) {
-    console.error("getRoomAvailability error:", e);
-    res.status(500).json({
-      message: "Failed to fetch room availability",
-      error: e.message,
+    if (roomTypeParam) {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(roomTypeParam);
+      filter.$and = [
+        {
+          $or: [
+            { slug: roomTypeParam },
+            isObjectId ? { _id: roomTypeParam } : null,
+          ].filter(Boolean),
+        },
+      ];
+    }
+
+    const roomDocs = await Room.find(filter).select(
+      "slug title stock priceBase currency maxGuests hero images"
+    );
+
+    if (!roomDocs?.length) {
+      return res.status(200).json({
+        availableRooms: [],
+        message: "No available room types found.",
+      });
+    }
+
+    /* ----------------------------------------
+       2) Find overlapping bookings
+       ---------------------------------------- */
+    const overlapping = await Booking.find({
+      type: "room",
+      status: { $in: ["Confirmed", "Pending"] },
+      checkInDate: { $lt: checkOutDate },
+      checkOutDate: { $gt: checkInDate },
+    }).select("itemId");
+
+    const occupiedByRoomId = {};
+    for (const b of overlapping) {
+      const key = String(b.itemId || "");
+      occupiedByRoomId[key] = (occupiedByRoomId[key] || 0) + 1;
+    }
+
+    /* ----------------------------------------
+       3) Build summary per room type
+       ---------------------------------------- */
+    const summary = {};
+    for (const r of roomDocs) {
+      const roomId = String(r._id);
+      const slug = r.slug;
+      const totalStock = Math.max(0, Number(r.stock) || 0);
+      const occupiedUnits = Math.max(0, occupiedByRoomId[roomId] || 0);
+      const availableUnits = Math.max(0, totalStock - occupiedUnits);
+
+      summary[slug] = {
+        roomId,
+        title: r.title,
+        totalStock,
+        occupiedUnits,
+        availableUnits,
+        currency: r.currency || "USD",
+        priceBase: Number.isFinite(r.priceBase) ? r.priceBase : null,
+      };
+    }
+
+    /* ----------------------------------------
+       4) Format UI results
+       ---------------------------------------- */
+    const availableRooms = Object.entries(summary)
+      .filter(([, s]) => s.availableUnits > 0)
+      .map(([slug, s]) => {
+        const r = roomDocs.find((x) => x.slug === slug);
+        const hero = toImgObj(r?.hero);
+        const firstImg =
+          Array.isArray(r?.images) && r.images.length
+            ? toImgObj(r.images[0])
+            : null;
+
+        return {
+          _id: s.roomId,
+          slug,
+          title: s.title,
+          priceBase: s.priceBase,
+          currency: s.currency,
+          availableUnits: s.availableUnits,
+          heroUrl: hero?.url || firstImg?.url || null,
+        };
+      });
+
+    return res.status(200).json({
+      checkIn: checkInDate,
+      checkOut: checkOutDate,
+      availableRooms,
+      summary,
+    });
+  } catch (err) {
+    console.error("Error fetching availability:", err);
+    return res.status(500).json({
+      message: "Server error during availability check.",
     });
   }
 };
