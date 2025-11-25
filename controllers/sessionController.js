@@ -175,7 +175,7 @@ export const updateCapacity = async (req, res) => {
 export const generateSessionsFromRules = async (req, res) => {
   try {
     const now = moment.utc().startOf("day");
-    const until = moment.utc().add(1, "month").endOf("day");
+    const until = moment.utc().add(6, "month").endOf("day");
 
     const rules = await RecurringRule.find({ isActive: true }).populate(
       "workshopId"
