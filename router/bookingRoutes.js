@@ -8,26 +8,37 @@ import {
   updateBooking,
 } from "../controllers/bookingController.js";
 
+import { protect, restrictTo } from "../controllers/authController.js";
+
 const router = Router();
 
 /* ===========================
    🧭 Public endpoints
    =========================== */
 
-router.post("/quote", getQuote);
-router.post("/", createBooking);
+router.post("/quote", getQuote); // ציטוט מחיר — ציבורי
 
 /* ===========================
-   🔒 Admin / User endpoints
+   🔒 Protected endpoints
    =========================== */
-// כל ההזמנות — לאדמין
-router.get("/all", getAllBookings);
 
-// ההזמנות של משתמש יחיד לפי אימייל או יוזר מחובר
-router.get("/user", getUsersBookings);
+// 🟣 יצירת בוקינג — רק למשתמש מחובר
+router.post("/", protect, createBooking);
 
-// עדכון סטטוס (למשל Pending → Confirmed)
-router.put("/:id", updateBooking);
-router.patch("/:id/cancel", cancelBooking);
+// 🟣 ההזמנות של המשתמש שמחובר
+router.get("/user", protect, getUsersBookings);
+
+/* ===========================
+   🔐 Admin endpoints
+   =========================== */
+
+// 🛑 כל ההזמנות — רק אדמין
+router.get("/all", protect, restrictTo("admin"), getAllBookings);
+
+// 🛑 עדכון הזמנה — רק אדמין
+router.put("/:id", protect, restrictTo("admin"), updateBooking);
+
+// 🛑 ביטול — רק אדמין, או המשתמש שיצר את הבוקינג
+router.patch("/:id/cancel", protect, cancelBooking);
 
 export default router;

@@ -70,7 +70,14 @@ const BookingSchema = new Schema(
       required: true,
     },
 
-    /** לסדנאות – לפי כלל חוזר (RecurringRule) או session */
+    /** 🟣 מי יצר את הבוקינג */
+    user: {
+      type: Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    /** לסדנאות – לפי כלל חוזר או session */
     ruleId: { type: Types.ObjectId, ref: "RecurringRule" },
     sessionId: { type: Types.ObjectId, ref: "Session" },
 
@@ -108,26 +115,30 @@ const BookingSchema = new Schema(
       enum: ["Pending", "Confirmed", "Cancelled"],
       default: "Pending",
     },
+
     payment: { type: PaymentSchema, default: () => ({}) },
   },
   { timestamps: true }
 );
 
 /* ============================================================
-   ⚙️ אינדקסים שימושיים
+   ⚙️ אינדקסים
    ============================================================ */
 BookingSchema.index(
   { bookingNumber: 1 },
   { unique: true, name: "uniq_bookingNumber" }
 );
+
 BookingSchema.index(
   { type: 1, itemId: 1, sessionId: 1, status: 1 },
   { name: "by_type_item_session_status" }
 );
+
 BookingSchema.index(
   { type: 1, itemId: 1, checkInDate: 1, checkOutDate: 1 },
   { name: "by_room_dates" }
 );
+
 BookingSchema.index(
   { "guestInfo.email": 1, createdAt: -1 },
   { name: "by_guest_email_created" }
@@ -137,7 +148,7 @@ BookingSchema.index(
    🪄 Hooks
    ============================================================ */
 
-/** קובע אוטומטית את typeRef לפי type */
+/** קובע אוטומטית typeRef לפי type */
 BookingSchema.pre("validate", function (next) {
   if (!this.typeRef && this.type) {
     this.typeRef = TYPE_TO_MODEL[this.type];
@@ -145,7 +156,7 @@ BookingSchema.pre("validate", function (next) {
   next();
 });
 
-/** בודק חובה לפי סוג ההזמנה */
+/** חובת שדות לפי סוג ההזמנה */
 BookingSchema.pre("validate", function (next) {
   if (this.type === "room") {
     if (!this.checkInDate || !this.checkOutDate) {
@@ -154,7 +165,6 @@ BookingSchema.pre("validate", function (next) {
       );
     }
   } else if (this.type === "workshop") {
-    // 💡 סדנה חוזרת → חייבת ruleId או sessionId
     if (!this.sessionId && !this.ruleId && !this.date) {
       return next(
         new Error(
@@ -170,7 +180,7 @@ BookingSchema.pre("validate", function (next) {
   next();
 });
 
-/** מייצר מספר הזמנה ייחודי אם לא קיים */
+/** יצירת מספר הזמנה ייחודי */
 BookingSchema.pre("validate", async function (next) {
   if (this.bookingNumber) return next();
 
@@ -191,6 +201,7 @@ BookingSchema.pre("validate", async function (next) {
       return next();
     }
   }
+
   next(new Error("Failed to generate unique bookingNumber"));
 });
 

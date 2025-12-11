@@ -1,75 +1,9 @@
 import User from "../models/User.js";
-import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
+import Booking from "../models/Booking.js";
 
 /* ============================================================
-   🧩 Helpers
-   ============================================================ */
-const signToken = (user) =>
-  jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
-    expiresIn: "7d",
-  });
-
-/* ============================================================
-   👤 Register (Signup)
-   ============================================================ */
-export const registerUser = async (req, res) => {
-  try {
-    const { email, password, fullName } = req.body;
-
-    if (!email) return res.status(400).json({ message: "Email is required." });
-
-    // בדוק אם כבר קיים משתמש עם אותו אימייל
-    const existing = await User.findOne({ email });
-    if (existing)
-      return res.status(409).json({ message: "User already exists." });
-
-    const user = await User.create({
-      email,
-      password,
-      loginType: "local",
-      role: "user",
-    });
-
-    const token = signToken(user);
-    res.status(201).json({ user, token });
-  } catch (err) {
-    console.error("❌ registerUser failed:", err);
-    res.status(500).json({ message: "Registration failed." });
-  }
-};
-
-/* ============================================================
-   🔑 Login
-   ============================================================ */
-export const loginUser = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email }).select("+password");
-
-    if (!user)
-      return res.status(401).json({ message: "Invalid email or password." });
-
-    if (user.loginType === "google")
-      return res
-        .status(400)
-        .json({ message: "This account uses Google sign-in." });
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch)
-      return res.status(401).json({ message: "Invalid email or password." });
-
-    const token = signToken(user);
-    res.status(200).json({ user, token });
-  } catch (err) {
-    console.error("❌ loginUser failed:", err);
-    res.status(500).json({ message: "Login failed." });
-  }
-};
-
-/* ============================================================
-   🧭 Get all users (Admin)
-   ============================================================ */
+   🧭 GET ALL USERS (ADMIN)
+============================================================ */
 export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find().select("-password");
@@ -81,13 +15,15 @@ export const getAllUsers = async (req, res) => {
 };
 
 /* ============================================================
-   👁️ Get user by ID
-   ============================================================ */
+   👁️ GET USER BY ID (ADMIN)
+============================================================ */
 export const getUserById = async (req, res) => {
   try {
     const { id } = req.params;
+
     const user = await User.findById(id).select("-password");
     if (!user) return res.status(404).json({ message: "User not found." });
+
     res.status(200).json(user);
   } catch (err) {
     console.error("❌ getUserById failed:", err);
@@ -96,16 +32,110 @@ export const getUserById = async (req, res) => {
 };
 
 /* ============================================================
-   🧱 Delete user
-   ============================================================ */
+   🧱 DELETE USER (ADMIN)
+============================================================ */
 export const deleteUser = async (req, res) => {
   try {
     const { id } = req.params;
+
     const user = await User.findByIdAndDelete(id);
     if (!user) return res.status(404).json({ message: "User not found." });
+
     res.status(200).json({ message: "User deleted." });
   } catch (err) {
     console.error("❌ deleteUser failed:", err);
     res.status(500).json({ message: "Failed to delete user." });
+  }
+};
+
+/* ============================================================
+   🟢 CHECK-IN (ADMIN)
+============================================================ */
+export const checkInUser = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findById(bookingId).populate("user");
+    if (!booking)
+      return res.status(404).json({ message: "Booking not found." });
+
+    booking.status = "checked-in";
+    await booking.save();
+
+    booking.user.inhouseStatus = true;
+    booking.user.currentBooking = booking._id;
+    await booking.user.save();
+
+    res.status(200).json({
+      message: "User is now INHOUSE.",
+      user: booking.user,
+    });
+  } catch (err) {
+    console.error("❌ checkInUser failed:", err);
+    res.status(500).json({ message: "Check-in failed." });
+  }
+};
+
+/* ============================================================
+   🔵 CHECK-OUT (ADMIN)
+============================================================ */
+export const checkOutUser = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+
+    const booking = await Booking.findById(bookingId).populate("user");
+    if (!booking)
+      return res.status(404).json({ message: "Booking not found." });
+
+    booking.status = "checked-out";
+    await booking.save();
+
+    booking.user.inhouseStatus = false;
+    booking.user.currentBooking = null;
+    await booking.user.save();
+
+    res.status(200).json({
+      message: "User checked-out successfully.",
+      user: booking.user,
+    });
+  } catch (err) {
+    console.error("❌ checkOutUser failed:", err);
+    res.status(500).json({ message: "Check-out failed." });
+  }
+};
+
+/* ============================================================
+   🔮 UPDATE ASTRO PROFILE (USER)
+============================================================ */
+export const updateAstroProfile = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+
+    if (!user) {
+      return res.status(404).json({
+        message: "User not found",
+      });
+    }
+
+    const { birthDate, birthTime, lat, lon, tzone, birthPlace } = req.body;
+
+    user.birthDate = birthDate;
+    user.birthTime = birthTime;
+    user.birthLat = lat;
+    user.birthLon = lon;
+    user.birthTzOffset = tzone;
+    user.birthPlace = birthPlace;
+
+    await user.save();
+
+    res.status(200).json({
+      message: "Astro profile updated successfully",
+      user,
+    });
+  } catch (err) {
+    console.error("❌ updateAstroProfile error:", err);
+    res.status(500).json({
+      message: "Failed to update astro profile",
+    });
   }
 };

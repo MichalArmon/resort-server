@@ -1,4 +1,4 @@
-// controllers/authController.js - הפונקציות בלבד!
+// controllers/authController.js
 
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
@@ -7,35 +7,37 @@ import { OAuth2Client } from "google-auth-library";
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
-// ----------------------------------------------------
-// פונקציית עזר: יצירת JWT
-// ----------------------------------------------------
-const signToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_SECRET, {
+/* ----------------------------------------------------
+   Helper: Sign JWT with id + role
+---------------------------------------------------- */
+const signToken = (user) => {
+  return jwt.sign({ id: user._id, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN,
   });
 };
 
-// ----------------------------------------------------
-// פונקציית הרשמה חדשה
-// ----------------------------------------------------
+/* ----------------------------------------------------
+   SIGNUP
+---------------------------------------------------- */
 export const signup = async (req, res) => {
   try {
-    // 💡 1. יצירת משתמש חדש
-    // משתמשים ב-req.body, ומודל Mongoose מטפל ב-hashing של הסיסמה.
-    // אם לא נשלח 'role', המודל (User.js) יקבע אותו ל'user' כברירת מחדל.
     const newUser = await User.create({
       email: req.body.email,
       password: req.body.password,
-      role: req.body.role, // יכול להיות 'admin' או 'user' (ברירת מחדל)
+      name: {
+        first: req.body.name?.first || "",
+        last: req.body.name?.last || "",
+      },
+      phone: req.body.phone || "",
+      country: req.body.address?.country || "",
+      city: req.body.address?.city || "",
+      birthDate: req.body.birthDate || null,
+      role: "user",
       loginType: "local",
-      // אם יש שדות נוספים חובה במודל (כמו name), יש להוסיף אותם ל-req.body!
     });
 
-    // 💡 2. הנפקת טוקן JWT
-    const token = signToken(newUser._id);
+    const token = signToken(newUser);
 
-    // 💡 3. החזרת תשובה
     res.status(201).json({
       status: "success",
       token,
@@ -44,18 +46,19 @@ export const signup = async (req, res) => {
           id: newUser._id,
           email: newUser.email,
           role: newUser.role,
+          name: newUser.name,
+          birthDate: newUser.birthDate,
         },
       },
     });
   } catch (err) {
-    // 💡 טיפול בשגיאות: דוא"ל קיים (unique error), שגיאות ולידציה וכו'.
-    // שגיאת דוא"ל קיים ב-MongoDB היא בדרך כלל קוד 11000.
     if (err.code === 11000) {
-      return res
-        .status(400)
-        .json({ status: "fail", message: "Email address already in use." });
+      return res.status(400).json({
+        status: "fail",
+        message: "Email address already in use.",
+      });
     }
-    // שגיאות ולידציה (כמו סיסמה קצרה מדי)
+
     res.status(400).json({
       status: "fail",
       message: err.message,
@@ -63,11 +66,48 @@ export const signup = async (req, res) => {
   }
 };
 
-// ----------------------------------------------------
-// פונקציית לוגין
-// ----------------------------------------------------
-// controllers/authController.js (פונקציית googleAuth מלאה)
+/* ----------------------------------------------------
+   LOGIN
+---------------------------------------------------- */
+export const login = async (req, res) => {
+  const { email, password } = req.body;
 
+  if (!email || !password)
+    return res.status(400).json({
+      status: "fail",
+      message: "Please provide email and password.",
+    });
+
+  const user = await User.findOne({ email }).select("+password");
+
+  if (!user || !(await user.correctPassword(password, user.password))) {
+    return res.status(401).json({
+      status: "fail",
+      message: "Incorrect email or password.",
+    });
+  }
+
+  const token = signToken(user);
+  user.password = undefined;
+
+  res.status(200).json({
+    status: "success",
+    token,
+    data: {
+      user: {
+        id: user._id,
+        role: user.role,
+        email: user.email,
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
+      },
+    },
+  });
+};
+
+/* ----------------------------------------------------
+   GOOGLE AUTH
+---------------------------------------------------- */
 export const googleAuth = async (req, res) => {
   const { idToken } = req.body;
 
@@ -79,87 +119,53 @@ export const googleAuth = async (req, res) => {
   }
 
   try {
-    // 1. אימות הטוקן מול גוגל
     const ticket = await client.verifyIdToken({
-      idToken: idToken,
+      idToken,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
+
     const payload = ticket.getPayload();
     const email = payload.email;
-    const name = payload.name; // נשתמש בזה אם המודל דורש שם
 
-    // 2. מציאת/יצירת משתמש ב-DB
     let user = await User.findOne({ email });
 
     if (!user) {
-      // אם אין משתמש, ניצור חדש
       user = await User.create({
-        email: email,
-        name: name, // אם רלוונטי
+        email,
+        firstName: payload.given_name || "",
+        lastName: payload.family_name || "",
         loginType: "google",
-        role: "user", // תפקיד ברירת מחדל
+        role: "user",
       });
     }
 
-    // 3. הנפקת טוקן JWT
-    const token = signToken(user._id);
+    const token = signToken(user);
 
     res.status(200).json({
       status: "success",
       token,
-      data: { user: { id: user._id, role: user.role, email: user.email } },
+      data: {
+        user: {
+          id: user._id,
+          role: user.role,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        },
+      },
     });
   } catch (error) {
-    console.error("Google Auth Error:", error);
-    res
-      .status(401)
-      .json({ status: "fail", message: "Invalid Google ID Token." });
-  }
-};
-// ----------------------------------------------------
-// פונקציית לוגין ל
-// ----------------------------------------------------
-export const login = async (req, res) => {
-  const { email, password } = req.body;
-
-  // 1. ודא שהאימייל והסיסמה נשלחו
-  if (!email || !password) {
-    return res.status(400).json({
+    res.status(401).json({
       status: "fail",
-      message: "Please provide email and password.",
+      message: "Invalid Google ID Token.",
     });
   }
-
-  // 2. מצא את המשתמש ב-DB
-  // 💡 חשוב: המודל User צריך להיות מוגדר לבחור את הסיסמה (select: false)
-  const user = await User.findOne({ email }).select("+password");
-
-  // 3. ודא שהמשתמש קיים ושהסיסמה נכונה
-  // נניח שיש פונקציית השוואת סיסמאות בתוך המודל User
-  if (!user || !(await user.correctPassword(password, user.password))) {
-    return res.status(401).json({
-      status: "fail",
-      message: "Incorrect email or password.",
-    });
-  }
-
-  // 4. הנפק טוקן חדש
-  const token = signToken(user._id);
-
-  // 5. הסר את הסיסמה מהתשובה
-  user.password = undefined;
-
-  res.status(200).json({
-    status: "success",
-    token,
-    data: { user: { id: user._id, role: user.role, email: user.email } },
-  });
 };
 
-// controllers/authController.js (פונקציית guestLogin)
-
+/* ----------------------------------------------------
+   GUEST LOGIN
+---------------------------------------------------- */
 export const guestLogin = async (req, res) => {
-  // 💡 מקבלים מספר הזמנה ואימייל
   const { bookingNumber, email } = req.body;
 
   if (!bookingNumber || !email) {
@@ -169,42 +175,97 @@ export const guestLogin = async (req, res) => {
     });
   }
 
-  // 1. אימות ההזמנה מול DB
   const booking = await Booking.findOne({
-    bookingNumber: bookingNumber,
-    "guestInfo.email": email, // 💡 חיפוש בתוך אובייקט מקונן
-    status: "Confirmed", // רק הזמנות מאושרות
-    // 💡 בדיקה אם ההזמנה עדיין בתוקף (לאחר checkOutDate או עתידית)
+    bookingNumber,
+    "guestInfo.email": email,
+    status: "Confirmed",
     checkOutDate: { $gte: new Date() },
   });
 
   if (!booking) {
     return res.status(401).json({
       status: "fail",
-      message:
-        "Invalid booking details or no active/future confirmed booking found.",
+      message: "Invalid booking details.",
     });
   }
 
-  // 2. מציאת/יצירת משתמש "אורח" קבוע
   let user = await User.findOne({ email });
 
   if (!user) {
-    // אם אין משתמש, ניצור משתמש חדש עם התפקיד 'guest'
     user = await User.create({
-      email: email,
-      loginType: "local", // אפשר גם להגדיר כ-'guest' אם תרצה להוסיף enum כזה
+      email,
+      loginType: "local",
       role: "guest",
+      firstName: booking.guestInfo.fullName || "",
     });
   }
-  // אם קיים, הוא כבר יהיה 'user' או 'guest' ב-DB
 
-  // 3. הנפקת טוקן JWT
-  const token = signToken(user._id);
+  const token = signToken(user);
 
   res.status(200).json({
     status: "success",
     token,
-    data: { user: { id: user._id, role: user.role, email: user.email } },
+    data: {
+      user: {
+        id: user._id,
+        role: user.role,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+      },
+    },
   });
+};
+
+/* ----------------------------------------------------
+   PROTECT (JWT Middleware)
+---------------------------------------------------- */
+export const protect = async (req, res, next) => {
+  try {
+    let token;
+
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith("Bearer")
+    ) {
+      token = req.headers.authorization.split(" ")[1];
+    }
+
+    if (!token) {
+      return res.status(401).json({
+        message: "You are not logged in. Please log in first.",
+      });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+
+    const user = await User.findById(decoded.id);
+    if (!user) {
+      return res.status(401).json({
+        message: "User belonging to this token no longer exists.",
+      });
+    }
+
+    req.user = user;
+    next();
+  } catch (err) {
+    console.error("❌ protect error:", err);
+    return res.status(401).json({
+      message: "Invalid or expired token.",
+    });
+  }
+};
+
+/* ----------------------------------------------------
+   RESTRICT TO
+---------------------------------------------------- */
+export const restrictTo = (...roles) => {
+  return (req, res, next) => {
+    if (!req.user || !roles.includes(req.user.role)) {
+      return res.status(403).json({
+        message: "You do not have permission to perform this action.",
+      });
+    }
+    next();
+  };
 };

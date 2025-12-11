@@ -10,7 +10,7 @@ const ImageSchema = new mongoose.Schema(
     height: Number,
     format: String,
   },
-  { _id: false } // לא נצטרך _id פנימי לכל תמונה
+  { _id: false }
 );
 
 const RoomSchema = new mongoose.Schema(
@@ -25,21 +25,17 @@ const RoomSchema = new mongoose.Schema(
     priceBase: Number,
     currency: { type: String, default: "USD" },
 
-    // 👇 עכשיו hero הוא אובייקט אמיתי, לא רק string
     hero: ImageSchema,
-
-    // 👇 וכל התמונות גם נשמרות כ-array של אובייקטים
     images: [ImageSchema],
 
-    // 🧾 שדות נוספים
     stock: { type: Number, default: 1 },
     active: { type: Boolean, default: true },
 
-    // 👇 תוספות עתידיות אם יש צורך בקשרי רפרנס (למשל Booking)
-    // bookings: [{ type: mongoose.Schema.Types.ObjectId, ref: "Booking" }],
+    // ❤️ לייקים
+    likesCount: { type: Number, default: 0 },
+    likedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   },
   { timestamps: true }
 );
 
-// ✅ שינוי מוחלט ל־Room
 export default mongoose.model("Room", RoomSchema);

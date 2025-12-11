@@ -10,11 +10,11 @@ import chalk from "chalk";
 import cors from "cors";
 import { startDailySessionJob } from "./cron/generateSessionsDaily.js";
 
-import logger from "./middlewares/logger.js"; // אם קיים
-import serverLogger from "./middlewares/loggerService.js"; // אם קיים
+import logger from "./middlewares/logger.js";
+import serverLogger from "./middlewares/loggerService.js";
 
 // ===== ראוטרים =====
-import router from "./router/router.js"; // ראוטר כללי תחת /api/v1 (לשים אחרון בבלוק של /api/v1)
+import router from "./router/router.js";
 import bookingRoutes from "./router/bookingRoutes.js";
 import authRoutes from "./router/authRoutes.js";
 import retreatRoutes from "./router/retreatsRoutes.js";
@@ -23,12 +23,17 @@ import uploadsRoutes from "./router/uploadsRoutes.js";
 import workshopsRoutes from "./router/workshopsRoutes.js";
 import treatmentsRoutes from "./router/treatmentsRoutes.js";
 import recurringRulesRoutes from "./router/recurringRulesRoutes.js";
+import astroRoutes from "./router/astroRoutes.js";
+import treatmentSessionsRoutes from "./router/treatmentSessionsRoutes.js";
+
+// ⭐ NEW ⭐ — ראוטרים של FAVORITES לפי המערכת החדשה
+import favoriteRoutes from "./router/favoriteRoutes.js";
 
 import categoryRoutes from "./router/categoryRoutes.js";
 import userRoutes from "./router/userRoutes.js";
 import sessionRoutes from "./router/sessionRoutes.js";
 
-// (לא חובה לייבא מודלים כאן אם לא משתמשים בהם ישירות, אבל לא מזיק)
+// מודלים נטענים
 import "./models/User.js";
 import "./models/Room.js";
 import "./models/Booking.js";
@@ -48,13 +53,11 @@ const ALLOWED_ORIGINS = new Set([
   "https://michalarmon.github.io",
   "https://michalarmon.github.io/ban-tao-resort",
   "https://bantao.netlify.app",
-  // "https://ban-tao.com",
-  // "https://www.ban-tao.com",
 ]);
 
 const corsOptions = {
   origin(origin, cb) {
-    if (!origin) return cb(null, true); // Postman/cURL/Healthchecks
+    if (!origin) return cb(null, true);
     if (ALLOWED_ORIGINS.has(origin)) return cb(null, true);
     return cb(new Error(`CORS blocked for origin: ${origin}`));
   },
@@ -63,13 +66,13 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 204,
 };
-app.use(cors(corsOptions)); // ✅ לפני הראוטים
+app.use(cors(corsOptions));
 
 /* ============================================================
  *  Middlewares
  * ============================================================ */
 app.disable("x-powered-by");
-app.use(express.json({ limit: "2mb" })); // ✅ לפני הראוטים
+app.use(express.json({ limit: "2mb" }));
 if (typeof serverLogger === "function") app.use(serverLogger);
 if (typeof logger === "function") app.use(logger);
 app.use(express.static("./public"));
@@ -94,11 +97,16 @@ app.use("/api/v1/uploads", uploadsRoutes);
 app.use("/api/v1/workshops", workshopsRoutes);
 app.use("/api/v1/treatments", treatmentsRoutes);
 app.use("/api/v1/recurring-rules", recurringRulesRoutes);
+app.use("/api/v1", treatmentSessionsRoutes);
 app.use("/api/v1/sessions", sessionRoutes);
 app.use("/api/v1/users", userRoutes);
+app.use("/api/v1", astroRoutes);
+app.use("/api/v1", treatmentSessionsRoutes);
 
-// ✅ חשוב: הראוטר הכללי תחת /api/v1 חייב להגיע *אחרי* כל הספציפיים
-app.use("/api/v1", router);
+// ⭐⭐ FAVORITES — מערכת הלייקים החדשה ⭐⭐
+app.use("/api/v1/favorites", favoriteRoutes);
+
+// app.use("/api/v1", router);
 
 /* ============================================================
  *  404
